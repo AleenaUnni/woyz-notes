@@ -2075,7 +2075,7 @@
 </div>
 
 <script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
+import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import { browserLocalPersistence, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import { getFirestore, collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDoc, getDocs, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
@@ -2085,7 +2085,13 @@ const auth = getAuth(firebaseApp);
 const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch(error => {
   console.warn('Unable to enable persistent login:', error);
 });
-const db = getFirestore(firebaseApp);
+const centralDb = getFirestore(firebaseApp);
+const db = centralDb;
+let targetDb = centralDb;
+
+function getActiveDb(){
+  return targetDb || centralDb;
+}
 
 const sampleRecords = [
   {
@@ -2782,7 +2788,7 @@ function patientMetaLine(record){
 
 function userNotesCollection(){
   if (!currentUser) throw new Error('You must sign in first.');
-  return collection(db,'users',currentUser.uid,'notes');
+  return collection(getActiveDb(),'users',currentUser.uid,'notes');
 }
 
 function noteOwnerUid(record){
@@ -2792,7 +2798,7 @@ function noteOwnerUid(record){
 function noteDocRef(record){
   const ownerUid = noteOwnerUid(record);
   if (!ownerUid || !record?.firestoreId) throw new Error('This note is not available.');
-  return doc(db,'users',ownerUid,'notes',record.firestoreId);
+  return doc(getActiveDb(),'users',ownerUid,'notes',record.firestoreId);
 }
 
 function recordLocalKey(record){
@@ -2924,7 +2930,7 @@ function noteMatchesSelectedScope(note, selectedDate = dateInputValue(selectedVi
 
 async function latestVisitDateForSelectedType(){
   const owners = sharedOwnerIds.length ? sharedOwnerIds : [currentUser.uid];
-  const snapshots = await Promise.all(owners.map(ownerUid => getDocs(collection(db,'users',ownerUid,'notes')).catch(() => null)));
+  const snapshots = await Promise.all(owners.map(ownerUid => getDocs(collection(getActiveDb(),'users',ownerUid,'notes')).catch(() => null)));
   return snapshots
     .flatMap((snapshot, index) => snapshot ? snapshot.docs.map(docSnap => noteFromSnapshot(docSnap, owners[index])) : [])
     .filter(noteMatchesSelectedVisitType)
@@ -3034,7 +3040,7 @@ function subscribeToSelectedDate({allowLatestDateFallback = false} = {}){
     }else if (receivedOwners >= owners.length) showEmptyDate('No OP notes saved for this date.');
   };
   owners.forEach(ownerUid => {
-    const notesQuery = query(collection(db,'users',ownerUid,'notes'),where('visitDate','==',selectedDate));
+    const notesQuery = query(collection(getActiveDb(),'users',ownerUid,'notes'),where('visitDate','==',selectedDate));
     const unsubscribe = onSnapshot(notesQuery,async snapshot => {
       receivedOwners += ownerRecords.has(ownerUid) ? 0 : 1;
       ownerRecords.set(ownerUid, snapshot.docs.map(docSnap => noteFromSnapshot(docSnap, ownerUid)));
@@ -3066,7 +3072,7 @@ function subscribeToAllRecords(){
   clearAllNotesSubscriptions();
   const owners = sharedOwnerIds.length ? sharedOwnerIds : [currentUser.uid];
   owners.forEach(ownerUid => {
-    const unsubscribe = onSnapshot(collection(db,'users',ownerUid,'notes'), snapshot => {
+    const unsubscribe = onSnapshot(collection(getActiveDb(),'users',ownerUid,'notes'), snapshot => {
       allOwnerRecords.set(ownerUid, snapshot.docs.map(docSnap => noteFromSnapshot(docSnap, ownerUid)));
       allRecords = Array.from(allOwnerRecords.values()).flat();
       if (searchScope === 'all'){
@@ -3182,6 +3188,8 @@ function updateRecordSearchPlaceholder(){
   recordSearchInput?.parentElement?.classList.toggle('empty', !(recordSearchInput.textContent || '').trim());
 }
 
+let currentLoginPassword = '';
+
 loginForm.addEventListener('submit', async event => {
   event.preventDefault();
   loginError.textContent = '';
@@ -3189,6 +3197,7 @@ loginForm.addEventListener('submit', async event => {
   loginSubmit.textContent = 'Signing in…';
   try{
     await authPersistenceReady;
+    currentLoginPassword = loginPassword.value;
     await signInWithEmailAndPassword(auth,loginEmail.value.trim(),loginPassword.value);
     loginPassword.value = '';
   }catch(error){
@@ -3217,14 +3226,55 @@ onAuthStateChanged(auth,user => {
     loginScreen.classList.add('hidden');
     appShell.classList.add('authenticated');
     userEmail.textContent = '';
-    userProfileUnsubscribe = onSnapshot(doc(db,'users',user.uid), snapshot => {
+    userProfileUnsubscribe = onSnapshot(doc(centralDb,'users',user.uid), snapshot => {
       const profile = snapshot.data() || {};
       userEmail.textContent = displayCredentialName(profile.credentialName) || '';
       ownerProfiles[user.uid] = profile;
       prescriptionLayoutState = normalizedPrescriptionLayout(profile.prescriptionLayout);
       if (layoutModal.classList.contains('open')) loadLayoutModal();
+
+      if (profile.targetFirebaseConfig){
+        try{
+          let config = profile.targetFirebaseConfig;
+          if (typeof config === 'string'){
+            let configStr = config.trim();
+            const objectMatch = configStr.match(/\{[\s\S]*\}/);
+            if (objectMatch) configStr = objectMatch[0];
+            try{
+              config = JSON.parse(configStr);
+            }catch(jsonErr){
+              config = (new Function(`return (${configStr});`))();
+            }
+          }
+          if (config && config.projectId){
+            const appName = `target_app_${user.uid}_${config.projectId}`;
+            const existingApps = getApps();
+            let targetApp = existingApps.find(a => a.name === appName);
+            if (!targetApp){
+              targetApp = initializeApp(config, appName);
+            }
+            targetDb = getFirestore(targetApp);
+            console.log('[Target DB] Connected to target project:', config.projectId);
+
+            if (currentLoginPassword && user.email){
+              const targetAuth = getAuth(targetApp);
+              signInWithEmailAndPassword(targetAuth, user.email, currentLoginPassword).catch(err => {
+                console.warn('[Target Auth] Target project auth notice:', err?.message || err);
+              });
+            }
+          }
+        }catch(err){
+          console.warn('[Target DB] Error connecting to target project, fallback to central DB:', err);
+          targetDb = centralDb;
+        }
+      }else{
+        targetDb = centralDb;
+      }
+
       if (Array.isArray(profile.sharedWith)){
         applySharedOwners([user.uid, ...profile.sharedWith]);
+      } else {
+        subscribeToSelectedDate({allowLatestDateFallback:true});
       }
     }, error => {
       userEmail.textContent = '';

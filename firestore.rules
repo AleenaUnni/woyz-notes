@@ -30,7 +30,9 @@ service cloud.firestore {
         "prescriptionLayout",
         "prescriptionLayoutUpdatedAt",
         "email",
-        "emailUpdatedAt"
+        "emailUpdatedAt",
+        "targetProjectId",
+        "targetFirebaseConfig"
       ];
     }
 
