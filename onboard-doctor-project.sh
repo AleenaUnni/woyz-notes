@@ -113,15 +113,17 @@ const tmpConfig = `firebase.${targetId}.json`;
 fs.writeFileSync(tmpRules, fs.readFileSync(rulesFile, "utf8"));
 fs.writeFileSync(tmpConfig, JSON.stringify({ firestore: { rules: tmpRules } }));
 
+let success = false;
 try {
   execSync(`firebase deploy --only firestore:rules --project ${targetId} --config ${tmpConfig}`, { stdio: "inherit" });
-  process.exit(0);
+  success = true;
 } catch(e) {
-  process.exit(1);
+  success = false;
 } finally {
   try { fs.unlinkSync(tmpRules); } catch(e) {}
   try { fs.unlinkSync(tmpConfig); } catch(e) {}
 }
+process.exit(success ? 0 : 1);
 '; then
   echo ">>> SUCCESS: Cloud Firestore security rules deployed to $TARGET_PROJECT_ID!"
 else
