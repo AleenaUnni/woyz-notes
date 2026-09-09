@@ -42,12 +42,74 @@ TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
 RAND_SUFFIX=$(printf '%04x' "$((RANDOM % 65536))")
 TARGET_PROJECT_ID="${TARGET_PROJECT_ID:-woyz-${SLUG}-${TIMESTAMP}-${RAND_SUFFIX}}"
 
+# Automatically detect Central Project ID from local configuration files (.firebaserc / firebase-config.js)
+DETECTED_CENTRAL_ID=$(node -e '
+try {
+  const rc = require("./.firebaserc");
+  console.log(rc.projects?.default || "");
+} catch(e) {
+  try {
+    const fs = require("fs");
+    const content = fs.readFileSync("./firebase-config.js", "utf8");
+    const match = content.match(/"projectId":\s*"([^"]+)"/);
+    console.log(match ? match[1] : "");
+  } catch(e2) {
+    console.log("");
+  }
+}
+' 2>/dev/null || echo "")
+
+CENTRAL_PROJECT_ID="${CENTRAL_PROJECT_ID:-${DETECTED_CENTRAL_ID:-woyz-notes-8c87f}}"
+
+# Automatically query Central Firestore to find doctor UID by email if not supplied
+if [[ -z "${DOCTOR_UID:-}" ]]; then
+  TOKEN=$(gcloud auth print-access-token 2>/dev/null || true)
+  if [[ -n "$TOKEN" ]]; then
+    LOOKUP_UID=$(curl -s -X POST \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      "https://firestore.googleapis.com/v1/projects/${CENTRAL_PROJECT_ID}/databases/(default)/documents:runQuery" \
+      -d "{
+        \"structuredQuery\": {
+          \"from\": [{\"collectionId\": \"users\"}],
+          \"where\": {
+            \"fieldFilter\": {
+              \"field\": {\"fieldPath\": \"email\"},
+              \"op\": \"EQUAL\",
+              \"value\": {\"stringValue\": \"$DOCTOR_EMAIL\"}
+            }
+          },
+          \"limit\": 1
+        }
+      }" | node -e '
+      let input = "";
+      process.stdin.on("data", chunk => input += chunk);
+      process.stdin.on("end", () => {
+        try {
+          const data = JSON.parse(input);
+          const name = data[0]?.document?.name || "";
+          const uid = name.split("/").pop();
+          console.log(uid || "");
+        } catch(e) {
+          console.log("");
+        }
+      });
+      ' 2>/dev/null || echo "")
+
+    if [[ -n "$LOOKUP_UID" ]]; then
+      DOCTOR_UID="$LOOKUP_UID"
+      echo ">>> Automatically found Central Auth UID for $DOCTOR_EMAIL: $DOCTOR_UID"
+    fi
+  fi
+fi
+
 echo
 echo "Target Setup Details:"
 echo "--------------------"
 echo "Doctor Email:      $DOCTOR_EMAIL"
 echo "Clinic Name:       $CLINIC_NAME"
 echo "Target Project ID: $TARGET_PROJECT_ID"
+echo "Central Project:   ${CENTRAL_PROJECT_ID:-woyz-notes-8c87f}"
 echo "Database Location: $FIRESTORE_LOCATION"
 echo
 
@@ -90,6 +152,30 @@ process.stdin.on("end", () => {
 });
 ')
 
+# Optional automated central database update if DOCTOR_UID is provided
+CENTRAL_LINKED="false"
+if [[ -n "${DOCTOR_UID:-}" && "$TARGET_JSON" != "{}" ]]; then
+  echo "[5/5] Attempting automatic link in Central Database (woyz-notes-8c87f)..."
+  TOKEN=$(gcloud auth print-access-token 2>/dev/null || true)
+  if [[ -n "$TOKEN" ]]; then
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      "https://firestore.googleapis.com/v1/projects/${CENTRAL_PROJECT_ID:-woyz-notes-8c87f}/databases/(default)/documents/users/${DOCTOR_UID}?updateMask.fieldPaths=targetFirebaseConfig&updateMask.fieldPaths=targetProjectId&updateMask.fieldPaths=email" \
+      -d "{
+        \"fields\": {
+          \"email\": {\"stringValue\": \"$DOCTOR_EMAIL\"},
+          \"targetProjectId\": {\"stringValue\": \"$TARGET_PROJECT_ID\"},
+          \"targetFirebaseConfig\": {\"stringValue\": \"$TARGET_JSON\"}
+        }
+      }" || echo "500")
+    if [[ "$HTTP_CODE" == "200" ]]; then
+      CENTRAL_LINKED="true"
+      echo ">>> Successfully linked targetFirebaseConfig directly to Central Firestore document users/$DOCTOR_UID!"
+    fi
+  fi
+fi
+
 echo
 echo "============================================================"
 echo "    AUTOMATED TARGET SETUP COMPLETE!                        "
@@ -102,33 +188,25 @@ echo "------------------------------------------"
 echo "$TARGET_JSON"
 echo "------------------------------------------"
 echo
+
+if [[ "$CENTRAL_LINKED" == "true" ]]; then
+  echo ">>> Central Firestore Link: AUTOMATICALLY COMPLETED for user $DOCTOR_UID!"
+else
+  echo "============================================================"
+  echo "    MANUAL CENTRAL LINKING (If not automatically linked)    "
+  echo "============================================================"
+  echo "Open Central Firebase Console: https://console.firebase.google.com/project/${CENTRAL_PROJECT_ID:-woyz-notes-8c87f}/firestore"
+  echo "Go to 'users' collection -> Select document for '$DOCTOR_EMAIL' (UID: ${DOCTOR_UID:-'doctor-uid'})."
+  echo "Add field 'targetFirebaseConfig' (string) = (Paste JSON above)"
+  echo "Add field 'targetProjectId' (string) = \"$TARGET_PROJECT_ID\""
+  echo
+fi
+
 echo "============================================================"
-echo "    NEXT MANUAL / INTEGRATION STEPS                         "
+echo "    VERIFICATION CHECKLIST                                  "
 echo "============================================================"
-echo
-echo "Step 1: Link Target Config to Doctor in Central Database (woyz-notes-8c87f)"
-echo "  1. Open Central Firebase Console: https://console.firebase.google.com/project/woyz-notes-8c87f/firestore"
-echo "  2. Go to 'users' collection -> Select document for '$DOCTOR_EMAIL'."
-echo "  3. Click '+ Add field':"
-echo "       - Field Name: targetFirebaseConfig"
-echo "       - Type: string"
-echo "       - Value: (Paste the JSON string printed above)"
-echo "  4. Add second field:"
-echo "       - Field Name: targetProjectId"
-echo "       - Type: string"
-echo "       - Value: \"$TARGET_PROJECT_ID\""
-echo
-echo "Step 2: Setup Target Project Authentication (Optional / Recommended for Strict Production Rules)"
-echo "  1. Open Target Project Console: https://console.firebase.google.com/project/$TARGET_PROJECT_ID/authentication"
-echo "  2. Go to 'Sign-in method' -> Enable 'Email/Password'."
-echo "  3. Go to 'Users' -> Click 'Add user':"
-echo "       - Email: $DOCTOR_EMAIL"
-echo "       - Password: (Doctor password)"
-echo
-echo "Step 3: Hosted Web App Verification (GitHub Pages)"
-echo "  1. Ensure your GitHub Pages domain (e.g. username.github.io) is listed under:"
-echo "     Target Project Console -> Authentication -> Authorized domains."
-echo "  2. Open your GitHub Pages URL (e.g. https://username.github.io/woyz-notes/)."
-echo "  3. Log in as $DOCTOR_EMAIL."
-echo "  4. Save a note and verify it appears directly inside $TARGET_PROJECT_ID Firestore!"
+echo "1. Ensure your GitHub Pages domain (e.g. username.github.io) is in Authorized Domains."
+echo "2. Open your GitHub Pages URL (e.g. https://username.github.io/woyz-notes/)."
+echo "3. Log in as $DOCTOR_EMAIL."
+echo "4. Save a note and verify it appears directly inside $TARGET_PROJECT_ID Firestore!"
 echo
