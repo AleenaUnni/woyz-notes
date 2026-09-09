@@ -100,19 +100,29 @@ echo "[1/2] Deploying Cloud Firestore Security Rules to Doctor's Project ($TARGE
 
 RULES_FILE="target-firestore.rules"
 [[ -f "$RULES_FILE" ]] || RULES_FILE="firestore.rules"
+export TARGET_PROJECT_ID RULES_FILE
 
 if node -e '
 const { execSync } = require("child_process");
 const fs = require("fs");
 const targetId = process.env.TARGET_PROJECT_ID;
 const rulesFile = process.env.RULES_FILE;
-fs.writeFileSync("firestore.rules.tmp", fs.readFileSync(rulesFile, "utf8"));
+const tmpRules = `firestore.rules.${targetId}.tmp`;
+const tmpConfig = `firebase.${targetId}.json`;
+
+fs.writeFileSync(tmpRules, fs.readFileSync(rulesFile, "utf8"));
+fs.writeFileSync(tmpConfig, JSON.stringify({ firestore: { rules: tmpRules } }));
+
 try {
-  execSync(`firebase deploy --only firestore:rules --project ${targetId} --config <(echo "{\\"firestore\\":{\\"rules\\":\\"firestore.rules.tmp\\"}}")`, { shell: "/bin/bash", stdio: "inherit" });
+  execSync(`firebase deploy --only firestore:rules --project ${targetId} --config ${tmpConfig}`, { stdio: "inherit" });
+  process.exit(0);
+} catch(e) {
+  process.exit(1);
 } finally {
-  try { fs.unlinkSync("firestore.rules.tmp"); } catch(e) {}
+  try { fs.unlinkSync(tmpRules); } catch(e) {}
+  try { fs.unlinkSync(tmpConfig); } catch(e) {}
 }
-' 2>/dev/null; then
+'; then
   echo ">>> SUCCESS: Cloud Firestore security rules deployed to $TARGET_PROJECT_ID!"
 else
   echo "⚠️  NOTICE: CLI auto-deployment of rules to '$TARGET_PROJECT_ID' was skipped or encountered permission limits."
