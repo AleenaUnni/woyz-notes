@@ -66,7 +66,7 @@ read -r -p 'Type CREATE NEW WOYZ NOTES to continue: ' confirmation
 
 echo "Creating a new local Git repository..."
 git init -b main
-git add index.html firebase-config.js firestore.rules firebase.json README.md .firebaserc.example setup-new-project.sh HANDOVER.md CODEX_HANDOFF_PROMPT.md
+git add index.html firebase-config.js firestore.rules target-firestore.rules firebase.json README.md .firebaserc.example setup-new-project.sh onboard-doctor-project.sh HANDOVER.md CODEX_HANDOFF_PROMPT.md
 git commit -m "Initial WOYZ Notes application"
 
 echo "Creating a brand-new GitHub repository..."
