@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F5F52">
+<title>WOYZ Notes — Admin Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F4F5F3;
+    --panel:#FFFFFF;
+    --border:#E2E5E1;
+    --ink:#1B231F;
+    --muted:#6E786F;
+    --teal:#1F5F52;
+    --teal-deep:#153F37;
+    --teal-wash:#EAF2EF;
+    --red:#D6472F;
+    --red-wash:#FBEAE6;
+    --gold:#D97706;
+    --gold-wash:#FEF3C7;
+    --focus:#8FB9AC;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%; min-height:100vh;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* Header */
+  .admin-header{
+    height:64px;
+    background:var(--teal-deep);
+    color:#fff;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 24px;
+    border-bottom:1px solid rgba(255,255,255,.1);
+  }
+  .admin-brand{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    text-decoration:none;
+    color:#fff;
+  }
+  .brand-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 14px 6px 8px;
+    border:3px solid #F45155;
+    border-radius:999px;
+    background:#17171D;
+    font-weight:800;
+    font-size:14px;
+    letter-spacing:1px;
+  }
+  .brand-dot{
+    width:18px;
+    height:18px;
+    border-radius:50%;
+    background:#F45155;
+    border:4px solid #452126;
+  }
+  .admin-badge{
+    background:rgba(255,255,255,.15);
+    padding:4px 10px;
+    border-radius:6px;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.5px;
+    text-transform:uppercase;
+  }
+  .header-actions{
+    display:flex;
+    align-items:center;
+    gap:16px;
+  }
+  .user-tag{
+    font-size:13px;
+    color:rgba(255,255,255,.8);
+  }
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    height:36px;
+    padding:0 14px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    background:var(--panel);
+    color:var(--ink);
+    font:500 13px 'Inter',sans-serif;
+    cursor:pointer;
+    transition:all .15s ease;
+    text-decoration:none;
+  }
+  .btn:hover{ background:#f9fcfb; }
+  .btn-primary{
+    background:var(--teal);
+    border-color:var(--teal);
+    color:#fff;
+  }
+  .btn-primary:hover{ background:var(--teal-deep); }
+  .btn-ghost{
+    background:transparent;
+    border-color:rgba(255,255,255,.2);
+    color:#fff;
+  }
+  .btn-ghost:hover{ background:rgba(255,255,255,.1); }
+
+  /* Login Screen */
+  .auth-overlay{
+    min-height:calc(100vh - 64px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  .login-card{
+    width:min(400px,100%);
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:32px;
+    box-shadow:0 20px 50px -25px rgba(20,35,29,.3);
+  }
+  .login-title{ margin:0 0 6px; font:600 24px 'Fraunces',serif; }
+  .login-sub{ margin:0 0 20px; color:var(--muted); font-size:13px; }
+  .form-group{ margin-bottom:14px; }
+  .form-label{ display:block; margin-bottom:6px; font-size:12px; font-weight:600; }
+  .form-input{
+    width:100%;
+    height:42px;
+    border:1.5px solid var(--border);
+    border-radius:9px;
+    padding:0 12px;
+    font:14px 'Inter',sans-serif;
+    outline:none;
+  }
+  .form-input:focus{ border-color:var(--teal); box-shadow:0 0 0 3px rgba(31,95,82,.15); }
+  .auth-error{ margin-top:12px; color:var(--red); font-size:13px; font-weight:500; min-height:18px; }
+
+  /* Main Admin View */
+  .admin-container{
+    max-width:1200px;
+    margin:0 auto;
+    padding:32px 24px;
+  }
+  .dashboard-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:28px;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  .dashboard-title{
+    margin:0;
+    font:600 28px 'Fraunces',serif;
+    color:var(--teal-deep);
+  }
+  .dashboard-sub{
+    margin:4px 0 0;
+    color:var(--muted);
+    font-size:14px;
+  }
+
+  /* Stats Grid */
+  .stats-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
+    gap:18px;
+    margin-bottom:32px;
+  }
+  .stat-card{
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:20px 24px;
+    box-shadow:0 2px 8px rgba(0,0,0,.02);
+  }
+  .stat-label{
+    font-size:12px;
+    font-weight:600;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:.5px;
+  }
+  .stat-value{
+    margin-top:8px;
+    font:700 32px 'Fraunces',serif;
+    color:var(--teal-deep);
+  }
+  .stat-sub{
+    margin-top:4px;
+    font-size:12px;
+    color:var(--muted);
+  }
+
+  /* Section Table */
+  .table-card{
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:16px;
+    box-shadow:0 4px 16px rgba(0,0,0,.03);
+    overflow:hidden;
+  }
+  .table-toolbar{
+    padding:20px 24px;
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  .search-box{
+    position:relative;
+    flex:1;
+    min-width:260px;
+    max-width:400px;
+  }
+  .search-input{
+    width:100%;
+    height:38px;
+    border:1.5px solid var(--border);
+    border-radius:8px;
+    padding:0 12px 0 36px;
+    font:13px 'Inter',sans-serif;
+    outline:none;
+  }
+  .search-input:focus{ border-color:var(--teal); }
+  .search-icon{
+    position:absolute;
+    left:12px;
+    top:50%;
+    transform:translateY(-50%);
+    color:var(--muted);
+    font-size:14px;
+  }
+
+  .table-wrapper{ overflow-x:auto; }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    text-align:left;
+    font-size:13px;
+  }
+  th{
+    background:var(--bg);
+    padding:12px 20px;
+    font-weight:600;
+    color:var(--muted);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.5px;
+    border-bottom:1px solid var(--border);
+  }
+  td{
+    padding:16px 20px;
+    border-bottom:1px solid var(--border);
+    vertical-align:middle;
+  }
+  tr:last-child td{ border-bottom:none; }
+  tr:hover td{ background:rgba(234,242,239,.4); }
+
+  .user-email{ font-weight:600; color:var(--ink); }
+  .user-uid{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); margin-top:2px; }
+  
+  .badge{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    padding:4px 10px;
+    border-radius:999px;
+    font-size:11px;
+    font-weight:600;
+  }
+  .badge-target{ background:var(--teal-wash); color:var(--teal); }
+  .badge-central{ background:var(--bg); color:var(--muted); border:1px solid var(--border); }
+  .badge-admin{ background:var(--gold-wash); color:var(--gold); }
+
+  .json-code{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    background:var(--bg);
+    padding:4px 8px;
+    border-radius:4px;
+    max-width:220px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  /* Modal */
+  .modal-backdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(15,23,20,.6);
+    backdrop-filter:blur(4px);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    z-index:100;
+  }
+  .modal-backdrop.open{ display:flex; }
+  .modal-card{
+    background:#fff;
+    border-radius:16px;
+    width:min(600px, 100%);
+    max-height:85vh;
+    display:flex;
+    flex-direction:column;
+    box-shadow:0 24px 60px rgba(0,0,0,.3);
+    overflow:hidden;
+  }
+  .modal-head{
+    padding:20px 24px;
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .modal-title{ margin:0; font:600 20px 'Fraunces',serif; }
+  .modal-body{ padding:24px; overflow-y:auto; font-size:13px; }
+  .modal-close{ background:none; border:none; font-size:24px; cursor:pointer; color:var(--muted); }
+
+  .empty-table{
+    padding:48px 24px;
+    text-align:center;
+    color:var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<header class="admin-header">
+  <a href="../index.html" class="admin-brand">
+    <div class="brand-pill">
+      <span class="brand-dot"></span>
+      WOYZ
+    </div>
+    <span class="admin-badge">Admin Portal</span>
+  </a>
+  <div class="header-actions">
+    <span class="user-tag" id="headerUserEmail"></span>
+    <a href="../index.html" class="btn btn-ghost">Doctor App</a>
+    <button class="btn btn-ghost" id="signOutBtn" style="display:none;">Sign Out</button>
+  </div>
+</header>
+
+<!-- Unauthenticated / Login Card -->
+<div class="auth-overlay" id="authView">
+  <div class="login-card">
+    <h1 class="login-title">Admin Sign In</h1>
+    <p class="login-sub">Sign in with an administrator account to view and manage registered doctor projects.</p>
+
+    <form id="adminLoginForm">
+      <div class="form-group">
+        <label class="form-label" for="adminEmailInput">Admin Email</label>
+        <input class="form-input" id="adminEmailInput" type="email" placeholder="drgigy@gmail.com" required autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="adminPasswordInput">Password</label>
+        <input class="form-input" id="adminPasswordInput" type="password" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%; height:44px; margin-top:12px; font-weight:600;">Sign In to Admin Portal</button>
+      <div class="auth-error" id="authError"></div>
+    </form>
+  </div>
+</div>
+
+<!-- Access Denied Screen -->
+<div class="auth-overlay" id="deniedView" style="display:none;">
+  <div class="login-card" style="text-align:center;">
+    <h1 class="login-title" style="color:var(--red);">Access Denied</h1>
+    <p class="login-sub" id="deniedMessage">Your signed-in account does not have administrator privileges.</p>
+    <button class="btn btn-primary" id="switchAccountBtn" style="width:100%; height:44px; margin-top:12px;">Sign Out &amp; Switch Account</button>
+  </div>
+</div>
+
+<!-- Main Admin Dashboard -->
+<main class="admin-container" id="dashboardView" style="display:none;">
+  <div class="dashboard-head">
+    <div>
+      <h1 class="dashboard-title">Registered Users &amp; Projects</h1>
+      <p class="dashboard-sub">Monitor doctor accounts, target database bindings, and project configurations across Central Firestore.</p>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button class="btn btn-primary" id="createDoctorBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        + Create Doctor Account
+      </button>
+      <button class="btn btn-ghost" id="refreshBtn" style="color:var(--ink); border-color:var(--border);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M2 11.5a10 10 0 0 1 18.8-4.3L21.5 8M2.5 16l1 1.2A10 10 0 0 0 22 12.5"/></svg>
+        Refresh List
+      </button>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Registered Users</div>
+      <div class="stat-value" id="statTotal">0</div>
+      <div class="stat-sub">Accounts in Central Firestore</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Isolated Target Projects</div>
+      <div class="stat-value" id="statTarget">0</div>
+      <div class="stat-sub">Doctors with dedicated Firebase DBs</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Central DB Users</div>
+      <div class="stat-value" id="statCentral">0</div>
+      <div class="stat-sub">Standard user accounts</div>
+    </div>
+  </div>
+
+  <!-- Users Directory Table -->
+  <div class="table-card">
+    <div class="table-toolbar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input class="search-input" id="userSearchInput" type="text" placeholder="Search by email, name, or target project ID...">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-ghost" id="filterAllBtn" style="color:var(--ink); border-color:var(--border);">All Users</button>
+        <button class="btn btn-ghost" id="filterTargetBtn" style="color:var(--muted); border-color:var(--border);">Target Projects Only</button>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Doctor / User</th>
+            <th>Database Mode</th>
+            <th>Target Project ID</th>
+            <th>Target Config</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="userTableBody">
+          <tr>
+            <td colspan="5" class="empty-table">Loading user directory...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<!-- Details Modal -->
+<div class="modal-backdrop" id="detailModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 class="modal-title" id="modalUserTitle">User Details</h2>
+      <button class="modal-close" id="modalCloseBtn">&times;</button>
+    </div>
+    <div class="modal-body" id="modalUserContent"></div>
+  </div>
+</div>
+
+<!-- Create Doctor Modal -->
+<div class="modal-backdrop" id="createDoctorModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 class="modal-title">Create &amp; Onboard Doctor Account</h2>
+      <button class="modal-close" id="createModalCloseBtn">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--muted); margin:0 0 16px; font-size:13px;">
+        Creates a new doctor account in Firebase Auth and provisions their document directly in Central Firestore.
+      </p>
+      <form id="createDoctorForm">
+        <div class="form-group">
+          <label class="form-label" for="createDoctorEmail">Doctor Email *</label>
+          <input class="form-input" id="createDoctorEmail" type="email" placeholder="drpatel@clinic.com" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="createDoctorPassword">Temporary Password *</label>
+          <input class="form-input" id="createDoctorPassword" type="text" placeholder="e.g. Patel12345!" required autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="createDoctorName">Doctor Display Name (Optional)</label>
+          <input class="form-input" id="createDoctorName" type="text" placeholder="e.g. Dr. Patel">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="createTargetProjectId">Target Firebase Project ID (Optional)</label>
+          <input class="form-input" id="createTargetProjectId" type="text" placeholder="e.g. patel-clinic-1a2b3 (Leave blank for Central DB)">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="createTargetConfig">Target firebaseConfig JSON (Optional)</label>
+          <textarea class="form-input" id="createTargetConfig" rows="3" style="height:auto; font-family:'IBM Plex Mono',monospace; font-size:12px;" placeholder='{"apiKey": "AIza...", "projectId": "patel-clinic-1a2b3"}'></textarea>
+        </div>
+
+        <div class="auth-error" id="createDoctorError" style="margin-bottom:12px;"></div>
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button class="btn btn-ghost" type="button" id="createModalCancelBtn" style="color:var(--ink); border-color:var(--border);">Cancel</button>
+          <button class="btn btn-primary" type="submit" id="createDoctorSubmitBtn" style="font-weight:600;">Create &amp; Provision Doctor</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit / Link Config Modal -->
+<div class="modal-backdrop" id="editConfigModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 class="modal-title" id="editModalUserTitle">Edit Doctor Profile &amp; Config</h2>
+      <button class="modal-close" id="editModalCloseBtn">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="editConfigForm">
+        <input type="hidden" id="editUserUid">
+        <div class="form-group">
+          <label class="form-label">User Email</label>
+          <input class="form-input" id="editUserEmail" type="text" readonly style="background:var(--bg); color:var(--muted);">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="editCredentialName">Doctor Display Name</label>
+          <input class="form-input" id="editCredentialName" type="text" placeholder="e.g. Dr. Patel">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="editTargetProjectId">Target Firebase Project ID</label>
+          <input class="form-input" id="editTargetProjectId" type="text" placeholder="e.g. patel-clinic-1a2b3 (Leave blank for Central DB)">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="editTargetFirebaseConfig">Target firebaseConfig JSON</label>
+          <textarea class="form-input" id="editTargetFirebaseConfig" rows="4" style="height:auto; font-family:'IBM Plex Mono',monospace; font-size:12px;" placeholder='{"apiKey": "...", "projectId": "..."}'></textarea>
+        </div>
+
+        <div class="auth-error" id="editConfigError" style="margin-bottom:12px;"></div>
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button class="btn btn-ghost" type="button" id="editModalCancelBtn" style="color:var(--ink); border-color:var(--border);">Cancel</button>
+          <button class="btn btn-primary" type="submit" id="editConfigSubmitBtn" style="font-weight:600;">Save &amp; Link Config</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp, deleteApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
+import { getFirestore, collection, getDocs, doc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+import { firebaseConfig } from '../firebase-config.js';
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// DOM Elements
+const authView = document.getElementById('authView');
+const deniedView = document.getElementById('deniedView');
+const dashboardView = document.getElementById('dashboardView');
+const headerUserEmail = document.getElementById('headerUserEmail');
+const signOutBtn = document.getElementById('signOutBtn');
+const adminLoginForm = document.getElementById('adminLoginForm');
+const adminEmailInput = document.getElementById('adminEmailInput');
+const adminPasswordInput = document.getElementById('adminPasswordInput');
+const authError = document.getElementById('authError');
+const switchAccountBtn = document.getElementById('switchAccountBtn');
+const deniedMessage = document.getElementById('deniedMessage');
+
+const statTotal = document.getElementById('statTotal');
+const statTarget = document.getElementById('statTarget');
+const statCentral = document.getElementById('statCentral');
+const userTableBody = document.getElementById('userTableBody');
+const userSearchInput = document.getElementById('userSearchInput');
+const refreshBtn = document.getElementById('refreshBtn');
+
+const detailModal = document.getElementById('detailModal');
+const modalCloseBtn = document.getElementById('modalCloseBtn');
+const modalUserTitle = document.getElementById('modalUserTitle');
+const modalUserContent = document.getElementById('modalUserContent');
+
+const createDoctorBtn = document.getElementById('createDoctorBtn');
+const createDoctorModal = document.getElementById('createDoctorModal');
+const createModalCloseBtn = document.getElementById('createModalCloseBtn');
+const createModalCancelBtn = document.getElementById('createModalCancelBtn');
+const createDoctorForm = document.getElementById('createDoctorForm');
+const createDoctorEmail = document.getElementById('createDoctorEmail');
+const createDoctorPassword = document.getElementById('createDoctorPassword');
+const createDoctorName = document.getElementById('createDoctorName');
+const createTargetProjectId = document.getElementById('createTargetProjectId');
+const createTargetConfig = document.getElementById('createTargetConfig');
+const createDoctorError = document.getElementById('createDoctorError');
+const createDoctorSubmitBtn = document.getElementById('createDoctorSubmitBtn');
+
+const editConfigModal = document.getElementById('editConfigModal');
+const editModalCloseBtn = document.getElementById('editModalCloseBtn');
+const editModalCancelBtn = document.getElementById('editModalCancelBtn');
+const editConfigForm = document.getElementById('editConfigForm');
+const editUserUid = document.getElementById('editUserUid');
+const editUserEmail = document.getElementById('editUserEmail');
+const editCredentialName = document.getElementById('editCredentialName');
+const editTargetProjectId = document.getElementById('editTargetProjectId');
+const editTargetFirebaseConfig = document.getElementById('editTargetFirebaseConfig');
+const editConfigError = document.getElementById('editConfigError');
+const editConfigSubmitBtn = document.getElementById('editConfigSubmitBtn');
+
+let allUsers = [];
+let activeFilter = 'all';
+
+// Admin verification list (email matching rules)
+const ADMIN_EMAILS = ['drgigy@gmail.com', 'aleena.unni@uvjtech.com', 'aleenaunni02@gmail.com'];
+const ADMIN_UIDS = ['Umb3lIKZfbXlLHth7OwDNFRvmUD3'];
+
+function isAdminUser(user) {
+  if (!user) return false;
+  return ADMIN_EMAILS.includes(user.email?.toLowerCase()) || ADMIN_UIDS.includes(user.uid);
+}
+
+// Auth State Change Handler
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    headerUserEmail.textContent = user.email;
+    signOutBtn.style.display = 'inline-flex';
+
+    if (isAdminUser(user)) {
+      authView.style.display = 'none';
+      deniedView.style.display = 'none';
+      dashboardView.style.display = 'block';
+      loadUserDirectory();
+    } else {
+      authView.style.display = 'none';
+      dashboardView.style.display = 'none';
+      deniedView.style.display = 'flex';
+      deniedMessage.textContent = `Account (${user.email}) does not have administrator privileges.`;
+    }
+  } else {
+    headerUserEmail.textContent = '';
+    signOutBtn.style.display = 'none';
+    authView.style.display = 'flex';
+    deniedView.style.display = 'none';
+    dashboardView.style.display = 'none';
+  }
+});
+
+// Login Form Submit
+adminLoginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  authError.textContent = '';
+  const email = adminEmailInput.value.trim();
+  const password = adminPasswordInput.value;
+
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    if (!isAdminUser(cred.user)) {
+      authError.textContent = 'Account authenticated, but is not an administrator.';
+    }
+  } catch (err) {
+    authError.textContent = err.message || 'Invalid admin credentials.';
+  }
+});
+
+// Sign Out
+signOutBtn.addEventListener('click', () => signOut(auth));
+switchAccountBtn.addEventListener('click', () => signOut(auth));
+refreshBtn.addEventListener('click', () => loadUserDirectory());
+
+// Load Users Directory from Central Firestore
+async function loadUserDirectory() {
+  userTableBody.innerHTML = '<tr><td colspan="5" class="empty-table">Loading user directory from Central Firestore...</td></tr>';
+  try {
+    const snapshot = await getDocs(collection(db, 'users'));
+    allUsers = snapshot.docs.map(doc => ({
+      uid: doc.id,
+      ...doc.data()
+    }));
+
+    updateStats();
+    renderUsersTable();
+  } catch (err) {
+    console.error('Error fetching users:', err);
+    userTableBody.innerHTML = `<tr><td colspan="5" class="empty-table" style="color:var(--red);">Failed to load user directory: ${err.message}</td></tr>`;
+  }
+}
+
+function updateStats() {
+  const total = allUsers.length;
+  const targetCount = allUsers.filter(u => u.targetProjectId || u.targetFirebaseConfig).length;
+  const centralCount = total - targetCount;
+
+  statTotal.textContent = total;
+  statTarget.textContent = targetCount;
+  statCentral.textContent = centralCount;
+}
+
+function renderUsersTable() {
+  const searchTerm = userSearchInput.value.trim().toLowerCase();
+  
+  let filtered = allUsers.filter(u => {
+    const matchesSearch = !searchTerm || 
+      (u.email && u.email.toLowerCase().includes(searchTerm)) ||
+      (u.credentialName && u.credentialName.toLowerCase().includes(searchTerm)) ||
+      (u.targetProjectId && u.targetProjectId.toLowerCase().includes(searchTerm)) ||
+      (u.uid && u.uid.toLowerCase().includes(searchTerm));
+    
+    if (activeFilter === 'target') {
+      return matchesSearch && (u.targetProjectId || u.targetFirebaseConfig);
+    }
+    return matchesSearch;
+  });
+
+  if (filtered.length === 0) {
+    userTableBody.innerHTML = '<tr><td colspan="5" class="empty-table">No matching user documents found.</td></tr>';
+    return;
+  }
+
+  userTableBody.innerHTML = filtered.map(u => {
+    const hasTarget = Boolean(u.targetProjectId || u.targetFirebaseConfig);
+    const isAdmin = u.email === 'drgigy@gmail.com' || ADMIN_EMAILS.includes(u.email);
+
+    return `
+      <tr>
+        <td>
+          <div class="user-email">${escapeHtml(u.email || 'No email stored')}</div>
+          <div class="user-uid">UID: ${escapeHtml(u.uid)} ${u.credentialName ? `• ${escapeHtml(u.credentialName)}` : ''}</div>
+        </td>
+        <td>
+          ${isAdmin ? '<span class="badge badge-admin">Admin Account</span>' : ''}
+          ${hasTarget ? '<span class="badge badge-target">Isolated Target DB</span>' : '<span class="badge badge-central">Central DB</span>'}
+        </td>
+        <td>
+          ${u.targetProjectId ? `<strong style="font-family:'IBM Plex Mono',monospace; color:var(--teal-deep);">${escapeHtml(u.targetProjectId)}</strong>` : '<span style="color:var(--muted);">—</span>'}
+        </td>
+        <td>
+          ${u.targetFirebaseConfig ? `<div class="json-code" title="${escapeHtml(u.targetFirebaseConfig)}">${escapeHtml(u.targetFirebaseConfig.slice(0, 35))}...</div>` : '<span style="color:var(--muted);">Standard</span>'}
+        </td>
+        <td>
+          <div style="display:flex; gap:6px;">
+            <button class="btn view-btn" data-uid="${u.uid}">Profile</button>
+            <button class="btn edit-btn btn-primary" data-uid="${u.uid}">Edit Config</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  document.querySelectorAll('.view-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const uid = e.target.dataset.uid;
+      const userDoc = allUsers.find(u => u.uid === uid);
+      if (userDoc) showUserModal(userDoc);
+    });
+  });
+
+  document.querySelectorAll('.edit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const uid = e.target.dataset.uid;
+      const userDoc = allUsers.find(u => u.uid === uid);
+      if (userDoc) showEditModal(userDoc);
+    });
+  });
+}
+
+userSearchInput.addEventListener('input', () => renderUsersTable());
+
+document.getElementById('filterAllBtn').addEventListener('click', (e) => {
+  activeFilter = 'all';
+  e.target.style.color = 'var(--ink)';
+  document.getElementById('filterTargetBtn').style.color = 'var(--muted)';
+  renderUsersTable();
+});
+
+document.getElementById('filterTargetBtn').addEventListener('click', (e) => {
+  activeFilter = 'target';
+  e.target.style.color = 'var(--ink)';
+  document.getElementById('filterAllBtn').style.color = 'var(--muted)';
+  renderUsersTable();
+});
+
+// Modal View Logic
+function showUserModal(u) {
+  modalUserTitle.textContent = `User Profile — ${u.email || u.uid}`;
+  modalUserContent.innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <div><strong>Email:</strong> ${escapeHtml(u.email || 'N/A')}</div>
+      <div><strong>User UID:</strong> <code style="background:var(--bg); padding:2px 6px; border-radius:4px;">${escapeHtml(u.uid)}</code></div>
+      <div><strong>Credential / Display Name:</strong> ${escapeHtml(u.credentialName || 'Not configured')}</div>
+      <div><strong>Target Project ID:</strong> ${escapeHtml(u.targetProjectId || 'None (Central DB)')}</div>
+      <div><strong>Target Firebase Config:</strong></div>
+      <pre style="background:var(--bg); padding:12px; border-radius:8px; overflow-x:auto; font-family:'IBM Plex Mono',monospace; font-size:12px;">${escapeHtml(u.targetFirebaseConfig || 'None')}</pre>
+      <div><strong>Raw Document Fields:</strong></div>
+      <pre style="background:var(--bg); padding:12px; border-radius:8px; overflow-x:auto; font-family:'IBM Plex Mono',monospace; font-size:12px;">${escapeHtml(JSON.stringify(u, null, 2))}</pre>
+    </div>
+  `;
+  detailModal.classList.add('open');
+}
+
+modalCloseBtn.addEventListener('click', () => detailModal.classList.remove('open'));
+detailModal.addEventListener('click', (e) => {
+  if (e.target === detailModal) detailModal.classList.remove('open');
+});
+
+// Create Doctor Modal Logic
+createDoctorBtn.addEventListener('click', () => {
+  createDoctorError.textContent = '';
+  createDoctorForm.reset();
+  createDoctorModal.classList.add('open');
+});
+
+createModalCloseBtn.addEventListener('click', () => createDoctorModal.classList.remove('open'));
+createModalCancelBtn.addEventListener('click', () => createDoctorModal.classList.remove('open'));
+
+createDoctorForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  createDoctorError.textContent = '';
+  createDoctorSubmitBtn.disabled = true;
+  createDoctorSubmitBtn.textContent = 'Creating account...';
+
+  const email = createDoctorEmail.value.trim();
+  const password = createDoctorPassword.value.trim();
+  const credentialName = createDoctorName.value.trim();
+  const targetProjectId = createTargetProjectId.value.trim();
+  const targetConfigRaw = createTargetConfig.value.trim();
+
+  let formattedConfig = '';
+  if (targetConfigRaw) {
+    try {
+      let str = targetConfigRaw;
+      const match = str.match(/\{[\s\S]*\}/);
+      if (match) str = match[0];
+      const parsed = (new Function('return (' + str + ')'))();
+      formattedConfig = JSON.stringify(parsed);
+    } catch(err) {
+      createDoctorError.textContent = 'Invalid targetFirebaseConfig JSON format.';
+      createDoctorSubmitBtn.disabled = false;
+      createDoctorSubmitBtn.textContent = 'Create & Provision Doctor';
+      return;
+    }
+  }
+
+  let secondaryApp = null;
+  try {
+    const secondaryAppName = 'SecondaryAuthApp_' + Date.now();
+    secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+    const secondaryAuth = getAuth(secondaryApp);
+
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    const newUid = cred.user.uid;
+
+    const docData = {
+      email: email,
+      emailUpdatedAt: serverTimestamp()
+    };
+    if (credentialName) {
+      docData.credentialName = credentialName;
+      docData.credentialUpdatedAt = serverTimestamp();
+    }
+    if (targetProjectId) docData.targetProjectId = targetProjectId;
+    if (formattedConfig) docData.targetFirebaseConfig = formattedConfig;
+
+    await setDoc(doc(db, 'users', newUid), docData, { merge: true });
+
+    createDoctorForm.reset();
+    createDoctorModal.classList.remove('open');
+    loadUserDirectory();
+  } catch(err) {
+    createDoctorError.textContent = err.message || 'Failed to create doctor account.';
+  } finally {
+    if (secondaryApp) {
+      try { await deleteApp(secondaryApp); } catch(e) {}
+    }
+    createDoctorSubmitBtn.disabled = false;
+    createDoctorSubmitBtn.textContent = 'Create & Provision Doctor';
+  }
+});
+
+// Edit Config Modal Logic
+function showEditModal(u) {
+  editConfigError.textContent = '';
+  editUserUid.value = u.uid;
+  editUserEmail.value = u.email || u.uid;
+  editCredentialName.value = u.credentialName || '';
+  editTargetProjectId.value = u.targetProjectId || '';
+  editTargetFirebaseConfig.value = u.targetFirebaseConfig || '';
+  editConfigModal.classList.add('open');
+}
+
+editModalCloseBtn.addEventListener('click', () => editConfigModal.classList.remove('open'));
+editModalCancelBtn.addEventListener('click', () => editConfigModal.classList.remove('open'));
+
+editConfigForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  editConfigError.textContent = '';
+  editConfigSubmitBtn.disabled = true;
+  editConfigSubmitBtn.textContent = 'Saving...';
+
+  const uid = editUserUid.value;
+  const credentialName = editCredentialName.value.trim();
+  const targetProjectId = editTargetProjectId.value.trim();
+  const targetConfigRaw = editTargetFirebaseConfig.value.trim();
+
+  let formattedConfig = '';
+  if (targetConfigRaw) {
+    try {
+      let str = targetConfigRaw;
+      const match = str.match(/\{[\s\S]*\}/);
+      if (match) str = match[0];
+      const parsed = (new Function('return (' + str + ')'))();
+      formattedConfig = JSON.stringify(parsed);
+    } catch(err) {
+      editConfigError.textContent = 'Invalid targetFirebaseConfig JSON format.';
+      editConfigSubmitBtn.disabled = false;
+      editConfigSubmitBtn.textContent = 'Save & Link Config';
+      return;
+    }
+  }
+
+  try {
+    const updateData = {
+      credentialName: credentialName,
+      credentialUpdatedAt: serverTimestamp(),
+      targetProjectId: targetProjectId,
+      targetFirebaseConfig: formattedConfig
+    };
+    await setDoc(doc(db, 'users', uid), updateData, { merge: true });
+
+    editConfigModal.classList.remove('open');
+    loadUserDirectory();
+  } catch(err) {
+    editConfigError.textContent = err.message || 'Failed to update config.';
+  } finally {
+    editConfigSubmitBtn.disabled = false;
+    editConfigSubmitBtn.textContent = 'Save & Link Config';
+  }
+});
+
+function escapeHtml(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>

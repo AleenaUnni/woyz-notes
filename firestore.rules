@@ -49,12 +49,12 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if signedInAs(userId) || isAdmin() || isMappedTo(userId);
-      allow create: if signedInAs(userId)
+      allow create: if (signedInAs(userId) || isAdmin())
         && request.resource.data.keys().hasOnly(userProfileFields());
       allow create: if isAdmin()
         && request.resource.data.keys().hasOnly(mappingFields())
         && request.resource.data.mappingUpdatedBy == request.auth.uid;
-      allow update: if signedInAs(userId)
+      allow update: if (signedInAs(userId) || isAdmin())
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(userProfileFields());
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(mappingFields())

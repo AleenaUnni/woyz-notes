@@ -1959,6 +1959,7 @@
     <label class="auth-label" for="credentialNameInput">Name</label>
     <input class="auth-input" id="credentialNameInput" type="text" autocomplete="name" placeholder="Example: Dr Gigy">
     <div class="auth-actions">
+      <a class="btn" id="adminPortalBtn" href="admin/" style="display:none; text-decoration:none; background:var(--teal-wash); color:var(--teal); font-weight:600;">Admin Portal</a>
       <button class="btn" id="credentialCancelBtn">Close</button>
       <button class="btn btn-copy" id="credentialSaveBtn">Save name</button>
     </div>
@@ -2079,6 +2080,10 @@ import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/12.16
 import { browserLocalPersistence, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import { getFirestore, collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDoc, getDocs, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
+
+if (window.location.hash === '#admin' || window.location.pathname.endsWith('/admin')) {
+  window.location.href = 'admin/';
+}
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
@@ -3213,6 +3218,11 @@ onAuthStateChanged(auth,user => {
   if (userProfileUnsubscribe) userProfileUnsubscribe();
   userProfileUnsubscribe = null;
   if (user){
+    const adminPortalBtn = document.getElementById('adminPortalBtn');
+    if (adminPortalBtn) {
+      const isAdmin = ['drgigy@gmail.com', 'aleena.unni@uvjtech.com', 'aleenaunni02@gmail.com'].includes((user.email || '').toLowerCase());
+      adminPortalBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+    }
     setDoc(doc(db,'users',user.uid),{
       email:user.email || '',
       emailUpdatedAt:serverTimestamp()
