@@ -22,7 +22,8 @@ app.post('/api/deploy-rules', (req, res) => {
   console.log(`[server.js] Deploying target firestore rules to project: ${targetProjectId}...`);
 
   const targetConfigFile = path.join(__dirname, 'firebase.target.json');
-  const cmd = `npx --yes firebase-tools@latest deploy --only firestore:rules --project ${targetProjectId} --config "${targetConfigFile}"`;
+  const tokenFlag = process.env.FIREBASE_TOKEN ? `--token "${process.env.FIREBASE_TOKEN}"` : '';
+  const cmd = `npx --yes firebase-tools@latest deploy --only firestore:rules --project ${targetProjectId} --config "${targetConfigFile}" ${tokenFlag}`;
 
   exec(cmd, { cwd: __dirname }, (error, stdout, stderr) => {
     if (error) {
