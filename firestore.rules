@@ -11,6 +11,8 @@ service cloud.firestore {
         && (
           request.auth.uid == "Umb3lIKZfbXlLHth7OwDNFRvmUD3"
           || request.auth.token.email == "drgigy@gmail.com"
+          || request.auth.token.email == "aleena.unni@uvjtech.com"
+          || request.auth.token.email == "aleenaunni02@gmail.com"
         );
     }
 
@@ -59,7 +61,7 @@ service cloud.firestore {
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(mappingFields())
         && request.resource.data.mappingUpdatedBy == request.auth.uid;
-      allow delete: if false;
+      allow delete: if isAdmin();
 
       match /notes/{noteId} {
         allow read: if signedInAs(userId) || isAdmin() || isMappedTo(userId);
