@@ -968,15 +968,14 @@ createDoctorForm.addEventListener('submit', async (e) => {
 
     await setDoc(doc(db, 'users', newUid), docData, { merge: true });
 
-    if (targetProjectId) {
-      createDoctorSubmitBtn.textContent = 'Deploying Firestore rules...';
-      const ruleRes = await deployTargetRules(targetProjectId);
-      console.log('[Automatic Rules Deployment]', ruleRes);
-    }
-
     createDoctorForm.reset();
     createDoctorModal.classList.remove('open');
     loadUserDirectory();
+
+    if (targetProjectId) {
+      const ruleRes = await deployTargetRules(targetProjectId);
+      console.log('[Automatic Rules Deployment]', ruleRes);
+    }
   } catch(err) {
     createDoctorError.textContent = err.message || 'Failed to create doctor account.';
   } finally {
