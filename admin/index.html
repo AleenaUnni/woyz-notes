@@ -498,12 +498,12 @@
           <input class="form-input" id="createDoctorName" type="text" placeholder="e.g. Dr. Patel">
         </div>
         <div class="form-group">
-          <label class="form-label" for="createTargetProjectId">Target Firebase Project ID (Optional)</label>
-          <input class="form-input" id="createTargetProjectId" type="text" placeholder="e.g. patel-clinic-1a2b3 (Leave blank for Central DB)">
+          <label class="form-label" for="createTargetProjectId">Target Firebase Project ID *</label>
+          <input class="form-input" id="createTargetProjectId" type="text" placeholder="e.g. patel-clinic-1a2b3" required>
         </div>
         <div class="form-group">
-          <label class="form-label" for="createTargetConfig">Target firebaseConfig JSON (Optional)</label>
-          <textarea class="form-input" id="createTargetConfig" rows="3" style="height:auto; font-family:'IBM Plex Mono',monospace; font-size:12px;" placeholder='{"apiKey": "AIza...", "projectId": "patel-clinic-1a2b3"}'></textarea>
+          <label class="form-label" for="createTargetConfig">Target firebaseConfig JSON *</label>
+          <textarea class="form-input" id="createTargetConfig" rows="3" style="height:auto; font-family:'IBM Plex Mono',monospace; font-size:12px;" placeholder='{"apiKey": "AIza...", "projectId": "patel-clinic-1a2b3"}' required></textarea>
         </div>
 
         <div class="auth-error" id="createDoctorError" style="margin-bottom:12px;"></div>
@@ -549,6 +549,32 @@
           <button class="btn btn-primary" type="submit" id="editConfigSubmitBtn" style="font-weight:600;">Save &amp; Link Config</button>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- Deploy Rules Modal -->
+<div class="modal-backdrop" id="deployRulesModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 class="modal-title" id="deployRulesModalTitle">Deploy Firestore Rules</h2>
+      <button class="modal-close" id="deployRulesModalCloseBtn">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0 0 12px; color:var(--ink);">
+        Click <strong>Copy Rules</strong> and paste them into the <strong>Rules tab</strong> of your target Firebase Console project:
+      </p>
+      <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:16px;">
+        <pre id="deployRulesCode" style="margin:0; font-family:'IBM Plex Mono',monospace; font-size:12px; white-space:pre-wrap; color:var(--teal-deep);"></pre>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:space-between; align-items:center;">
+        <button class="btn btn-primary" id="copyRulesBtn" style="font-weight:600;">
+          📋 Copy Rules to Clipboard
+        </button>
+        <a class="btn btn-ghost" id="openFirebaseRulesConsoleBtn" target="_blank" rel="noopener noreferrer" style="color:var(--teal); border-color:var(--teal); text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+          Open Firebase Console Rules Tab ↗
+        </a>
+      </div>
     </div>
   </div>
 </div>
@@ -743,9 +769,10 @@ function renderUsersTable() {
           ${u.targetFirebaseConfig ? `<div class="json-code" title="${escapeHtml(u.targetFirebaseConfig)}">${escapeHtml(u.targetFirebaseConfig.slice(0, 35))}...</div>` : '<span style="color:var(--muted);">Standard</span>'}
         </td>
         <td>
-          <div style="display:flex; gap:6px;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
             <button class="btn view-btn" data-uid="${u.uid}">Profile</button>
             <button class="btn edit-btn btn-primary" data-uid="${u.uid}">Edit Config</button>
+            ${u.targetProjectId ? `<button class="btn deploy-rules-btn" data-targetid="${escapeHtml(u.targetProjectId)}" style="background:var(--teal-wash); color:var(--teal); font-weight:600;">Deploy Rules</button>` : ''}
           </div>
         </td>
       </tr>
@@ -767,6 +794,79 @@ function renderUsersTable() {
       if (userDoc) showEditModal(userDoc);
     });
   });
+
+  document.querySelectorAll('.deploy-rules-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const btnEl = e.currentTarget;
+      const targetId = btnEl.dataset.targetid;
+      if (targetId) {
+        showDeployRulesModal(targetId);
+      }
+    });
+  });
+}
+
+const TARGET_RULES_SNIPPET = `rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/notes/{noteId} {
+      allow read, write: if true;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}`;
+
+function showDeployRulesModal(targetProjectId) {
+  const modal = document.getElementById('deployRulesModal');
+  document.getElementById('deployRulesModalTitle').textContent = `Deploy Rules — ${targetProjectId}`;
+  document.getElementById('deployRulesCode').textContent = TARGET_RULES_SNIPPET;
+  document.getElementById('openFirebaseRulesConsoleBtn').href = `https://console.firebase.google.com/project/${encodeURIComponent(targetProjectId)}/firestore/rules`;
+  modal.classList.add('open');
+}
+
+document.getElementById('deployRulesModalCloseBtn')?.addEventListener('click', () => {
+  document.getElementById('deployRulesModal').classList.remove('open');
+});
+document.getElementById('deployRulesModal')?.addEventListener('click', (e) => {
+  if (e.target === document.getElementById('deployRulesModal')) {
+    document.getElementById('deployRulesModal').classList.remove('open');
+  }
+});
+
+document.getElementById('copyRulesBtn')?.addEventListener('click', () => {
+  navigator.clipboard.writeText(TARGET_RULES_SNIPPET).then(() => {
+    const btn = document.getElementById('copyRulesBtn');
+    btn.textContent = '✅ Copied to Clipboard!';
+    setTimeout(() => { btn.textContent = '📋 Copy Rules to Clipboard'; }, 3000);
+  });
+});
+
+const BACKEND_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:3000'
+  : 'https://woyz-notes-backend.onrender.com';
+
+async function deployTargetRules(targetProjectId) {
+  if (!targetProjectId) return { success: true, message: 'No target project ID provided.' };
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/deploy-rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetProjectId })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return { success: true, message: data.message || `Rules successfully deployed to ${targetProjectId}!` };
+    }
+  } catch(err) {
+    console.warn('[Backend Rules Deployment Server Offline/Error]', err);
+  }
+
+  showDeployRulesModal(targetProjectId);
+  return { success: false, message: `Opened rules setup modal for ${targetProjectId}.` };
 }
 
 userSearchInput.addEventListener('input', () => renderUsersTable());
@@ -868,6 +968,12 @@ createDoctorForm.addEventListener('submit', async (e) => {
 
     await setDoc(doc(db, 'users', newUid), docData, { merge: true });
 
+    if (targetProjectId) {
+      createDoctorSubmitBtn.textContent = 'Deploying Firestore rules...';
+      const ruleRes = await deployTargetRules(targetProjectId);
+      console.log('[Automatic Rules Deployment]', ruleRes);
+    }
+
     createDoctorForm.reset();
     createDoctorModal.classList.remove('open');
     loadUserDirectory();
@@ -931,6 +1037,12 @@ editConfigForm.addEventListener('submit', async (e) => {
       targetFirebaseConfig: formattedConfig
     };
     await setDoc(doc(db, 'users', uid), updateData, { merge: true });
+
+    if (targetProjectId) {
+      editConfigSubmitBtn.textContent = 'Deploying Firestore rules...';
+      const ruleRes = await deployTargetRules(targetProjectId);
+      console.log('[Automatic Rules Deployment]', ruleRes);
+    }
 
     editConfigModal.classList.remove('open');
     loadUserDirectory();
