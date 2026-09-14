@@ -3392,6 +3392,9 @@ function selectEntry(i,{preserveDirtyEditor = false} = {}){
   updateContinueNoteButton();
 
   if (isGeneratedRecord){
+    if (continuationState.open && continuationState.mode === 'new' && continuationState.targetId !== r.firestoreId){
+      closeContinuationDock();
+    }
     if (keepExistingEditor){
       resizeNoteEditor(document.getElementById('generatedNoteEditor'));
       return;
@@ -3401,6 +3404,9 @@ function selectEntry(i,{preserveDirtyEditor = false} = {}){
   }
 
   if (r.isDraft){
+    if (isVoiceDraftRecord && pendingNewVoiceDockId !== r.firestoreId && continuationState.targetId !== r.firestoreId){
+      openNewVoiceDock();
+    }
     renderVoiceWorkspace();
     return;
   }
@@ -4194,7 +4200,8 @@ function renderContinuationDock(){
   continuationPauseBtn.style.display = continuationState.hasStarted && !hasSavedAudio ? 'grid' : 'none';
   continuationExtendBtn.style.display = continuationState.hasStarted && !hasSavedAudio ? 'grid' : 'none';
   continuationStopBtn.style.display = continuationState.hasStarted ? 'grid' : 'none';
-  continuationCloseBtn.style.display = continuationState.mode === 'new' ? 'none' : 'grid';
+  continuationCloseBtn.style.display = 'grid';
+  continuationCloseBtn.setAttribute('aria-label', continuationState.mode === 'new' ? 'Close voice draft' : 'Close continuation dictation');
   continuationPauseBtn.innerHTML = continuationState.recording
     ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>'
     : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5Z"/></svg>';
@@ -5105,8 +5112,13 @@ function selectExistingDraftRecord(record){
   return true;
 }
 
-function selectExistingLocalDraft({visitType = selectedVisitType, fallbackToAny = true} = {}){
-  const ownDrafts = records.filter(record => record.isDraft && noteOwnerUid(record) === currentUser?.uid);
+function selectExistingLocalDraft({visitType = selectedVisitType, fallbackToAny = true, voiceDraftOnly = false, manualDraftOnly = false} = {}){
+  const ownDrafts = records.filter(record => {
+    if (!record.isDraft || noteOwnerUid(record) !== currentUser?.uid) return false;
+    if (voiceDraftOnly && record.voiceDraft !== true) return false;
+    if (manualDraftOnly && (record.voiceDraft === true || (record.transcription && record.kind === 'generated' && record.transcription !== MANUAL_NOTE_TEMPLATE))) return false;
+    return true;
+  });
   const draft = ownDrafts.find(record => noteVisitType(record) === visitType) || (fallbackToAny ? ownDrafts[0] : null);
   return selectExistingDraftRecord(draft);
 }
@@ -5140,7 +5152,7 @@ async function createVoiceDraft(mode = null){
     selectedTimelineKey = null;
     updateSearchScopeToggle();
     try{
-      if (selectExistingLocalDraft({visitType:requestedVisitType,fallbackToAny:false})){
+      if (selectExistingLocalDraft({visitType:requestedVisitType,fallbackToAny:false,voiceDraftOnly:true})){
         if (records[activeIndex]?.voiceDraft) openNewVoiceDock();
         return;
       }
@@ -5195,14 +5207,19 @@ async function createManualDraft(){
     searchScope = 'today';
     selectedTimelineKey = null;
     updateSearchScopeToggle();
-    if (selectExistingLocalDraft()) return;
+    if (selectExistingLocalDraft({manualDraftOnly:true})){
+      if (continuationState.mode === 'new') closeContinuationDock();
+      return;
+    }
     const existingDraft = await existingDraftSnapshotForCurrentUser();
     if (existingDraft){
       selectExistingDraftSnapshot(existingDraft);
+      if (continuationState.mode === 'new') closeContinuationDock();
       return;
     }
     stopVoiceTimer();
     stopMediaTracks();
+    if (continuationState.mode === 'new') closeContinuationDock();
     const now = new Date();
     const createdAt = now.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}) + ', ' + now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
     const selectedDateString = dateInputValue(selectedVisitDate);
