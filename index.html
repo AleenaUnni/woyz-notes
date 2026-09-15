@@ -3031,7 +3031,8 @@ function subscribeToSelectedDate({allowLatestDateFallback = false} = {}){
       try{
         const latestDate = await latestVisitDateForSelectedType();
         if (requestId !== dateSubscriptionRequestId) return;
-        if (latestDate && latestDate !== selectedDate){
+        const todayStr = dateInputValue(new Date());
+        if (latestDate && latestDate !== selectedDate && latestDate >= todayStr){
           const [year,month,day] = latestDate.split('-').map(Number);
           selectedVisitDate = new Date(year,month-1,day);
           updateDateNavigation();
