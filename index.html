@@ -2281,7 +2281,7 @@ const DEFAULT_PRESCRIPTION_LAYOUT = {
     size:'small'
   }
 };
-const GEMINI_MODELS = ['gemini-3.6-flash','gemini-flash-latest','gemini-2.5-flash'];
+const GEMINI_MODELS = ['gemini-2.5-flash','gemini-1.5-flash-latest'];
 const PATIENT_FIELDS = {
   patientName:{type:'string',description:'Patient name exactly as spoken at the beginning, otherwise NIL.'},
   patientAge:{type:'string',description:'Patient age exactly as spoken at the beginning, otherwise NIL.'},
@@ -3981,7 +3981,13 @@ async function startRecording(){
     audioChunks = [];
     setupAudioAnalyser(mediaStream);
     mediaRecorder = new MediaRecorder(mediaStream);
-    mediaRecorder.addEventListener('dataavailable', event => { if (event.data.size) audioChunks.push(event.data); });
+    mediaRecorder.addEventListener('dataavailable', event => {
+      if (event.data.size){
+        audioChunks.push(event.data);
+        const totalSize = audioChunks.reduce((acc, c) => acc + c.size, 0);
+        console.log(`[WOYZ Audio Chunk] +${event.data.size} bytes | Chunks: ${audioChunks.length} | Total: ${totalSize} bytes`);
+      }
+    });
     mediaRecorder.start(1000);
     draft.hasStarted = true;
     draft.recording = true;
@@ -4118,8 +4124,18 @@ function stopMediaRecorder(){
     if (!mediaRecorder) return reject(new Error('No recording is available.'));
     const mimeType = mediaRecorder.mimeType || 'audio/webm';
     mediaRecorder.addEventListener('stop', () => resolve(new Blob(audioChunks, {type:mimeType})), {once:true});
-    if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-    else resolve(new Blob(audioChunks, {type:mimeType}));
+    try {
+      if (mediaRecorder.state !== 'inactive'){
+        if (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused'){
+          try { mediaRecorder.requestData(); } catch(e) {}
+        }
+        mediaRecorder.stop();
+      } else {
+        resolve(new Blob(audioChunks, {type:mimeType}));
+      }
+    } catch(e) {
+      resolve(new Blob(audioChunks, {type:mimeType}));
+    }
   });
 }
 
@@ -4316,7 +4332,13 @@ async function startContinuationRecording(){
     audioChunks = [];
     setupAudioAnalyser(mediaStream);
     mediaRecorder = new MediaRecorder(mediaStream);
-    mediaRecorder.addEventListener('dataavailable', event => { if (event.data.size) audioChunks.push(event.data); });
+    mediaRecorder.addEventListener('dataavailable', event => {
+      if (event.data.size){
+        audioChunks.push(event.data);
+        const totalSize = audioChunks.reduce((acc, c) => acc + c.size, 0);
+        console.log(`[WOYZ Audio Chunk] +${event.data.size} bytes | Chunks: ${audioChunks.length} | Total: ${totalSize} bytes`);
+      }
+    });
     mediaRecorder.start(1000);
     continuationState.hasStarted = true;
     continuationState.recording = true;
@@ -4713,6 +4735,12 @@ function blobToBase64(blob){
 }
 
 async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visitType = selectedVisitType){
+  console.log('[WOYZ Audio] Captured Blob:', { size: audioBlob.size, type: audioBlob.type });
+  const avgChunkSize = audioChunks.length ? (audioBlob.size / audioChunks.length) : 0;
+  if (audioChunks.length > 5 && avgChunkSize < 400){
+    throw noteServiceError('Your microphone appears to be muted or capturing silence. Please check your browser microphone settings.', false);
+  }
+  if (audioBlob.size < 4000) throw noteServiceError('Recording was too short or silent (under 2 seconds). Please record your dictation again.', false);
   if (audioBlob.size > 19 * 1024 * 1024) throw new Error('Recording is too large for inline upload.');
   const audioData = await blobToBase64(audioBlob);
   const mode = selectedMode || 'ambient';
@@ -4735,10 +4763,12 @@ async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visit
     onRetry
   });
   const responseText = payload.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
+  console.log('[WOYZ Gemini] Response Text:', responseText);
   if (!responseText) throw noteServiceError('The service returned an empty response.', true);
   let parsed;
   try{ parsed = JSON.parse(responseText); }
   catch(error){ throw noteServiceError('The service returned an invalid structured response.', true); }
+  console.log('[WOYZ Gemini] Parsed JSON:', parsed);
   const patientData = {
     name:String(parsed.patientName || 'NIL').trim(),
     age:String(parsed.patientAge || 'NIL').trim(),
@@ -4799,12 +4829,15 @@ async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt
   const requestTimeoutMs = 120000;
   const maxAttempts = attemptPlan.length;
   let lastMessage = '';
+  const cleanMimeType = (audioBlob.type || 'audio/webm').split(';')[0].trim();
+  console.log('[WOYZ Gemini Request] Clean MIME type:', cleanMimeType, 'Audio data length:', audioData?.length || 0);
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1){
     const plan = attemptPlan[attempt - 1];
     let response;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
     try{
+      console.log(`[WOYZ Gemini] Attempt ${attempt}/${maxAttempts} requesting model: ${plan.model}...`);
       response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${plan.model}:generateContent`, {
         method:'POST',
         signal:controller.signal,
@@ -4813,12 +4846,13 @@ async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt
           systemInstruction:{parts:[{text:systemPrompt}]},
           contents:[{role:'user',parts:[
             {text:taskPrompt},
-            {inline_data:{mime_type:audioBlob.type || 'audio/webm',data:audioData}}
+            {inline_data:{mime_type:cleanMimeType,data:audioData}}
           ]}],
           generationConfig:{temperature:0,maxOutputTokens:8192,responseMimeType:'application/json',responseSchema}
         })
       });
     }catch(error){
+      console.warn(`[WOYZ Gemini] Attempt ${attempt} fetch failed:`, error);
       lastMessage = error.name === 'AbortError' ? 'The note service timed out.' : (error.message || 'Network request failed.');
       if (attempt === maxAttempts) throw noteServiceError(lastMessage, true);
       const nextModel = attemptPlan[attempt]?.model;
@@ -4829,6 +4863,7 @@ async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt
       clearTimeout(timeoutId);
     }
     const payload = await response.json().catch(() => ({}));
+    console.log(`[WOYZ Gemini] Attempt ${attempt} (${plan.model}) response status: ${response.status}`, payload);
     lastMessage = payload.error?.message || response.statusText || 'Note processing failed.';
     if (response.ok) return payload;
     if (!isTransientGeminiError(response.status, lastMessage) || attempt === maxAttempts){
