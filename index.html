@@ -3800,7 +3800,7 @@ function resizeNoteEditor(editor){
 
 function renderVoiceDraftTemplate(draft){
   const title = draft.selectedMode || 'Visit Note';
-  const templateText = newVoiceTemplateForMode(draft.selectedMode, draft.visitType || selectedVisitType);
+  const templateText = newVoiceTemplateForMode(draft.selectedMode, draft.visitType || selectedVisitType, draft.patientData, draft.visitDate);
   mainScroll.innerHTML = `
     <div class="generated-note">
       <section class="generated-note-card">
@@ -4246,9 +4246,50 @@ function selectedRecordCanContinue(){
   return Boolean(record && !record.voiceDraft && (record.transcription || record.kind === 'generated'));
 }
 
-function newVoiceTemplateForMode(mode, visitType = selectedVisitType){
-  if (mode === 'Medical certificate') return MEDICAL_CERTIFICATE_TEMPLATE;
-  if (mode === 'Reply letter') return REPLY_LETTER_TEMPLATE;
+function formatTemplateDate(visitDateStr){
+  if (!visitDateStr || visitDateStr === 'NIL') {
+    const today = new Date();
+    const d = String(today.getDate()).padStart(2, '0');
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const y = today.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(visitDateStr)){
+    const [y, m, d] = visitDateStr.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return visitDateStr;
+}
+
+function newVoiceTemplateForMode(mode, visitType = selectedVisitType, patientData = null, visitDateStr = null){
+  const name = patientData?.name && patientData.name !== 'NIL' ? patientData.name : 'NIL';
+  const age = patientData?.age && patientData.age !== 'NIL' ? patientData.age : 'NIL';
+  const uhid = patientData?.uhid && patientData.uhid !== 'NIL' ? patientData.uhid : 'NIL';
+  const sex = patientData?.sex && patientData.sex !== 'NIL' ? patientData.sex : 'NIL';
+  const formattedDate = formatTemplateDate(visitDateStr);
+
+  if (mode === 'Medical certificate'){
+    const certSubjectName = name !== 'NIL' ? name : '';
+    return `Patient Name: ${name}
+Age: ${age}
+UHID: ${uhid}
+Date: ${formattedDate}
+Sex: ${sex}
+
+Medical Certificate:
+This is to certify that ${certSubjectName}`.trim();
+  }
+  if (mode === 'Reply letter'){
+    return `Patient Name: ${name}
+Age: ${age}
+UHID: ${uhid}
+
+To:
+
+
+
+Thank you`.trim();
+  }
   return visitType === 'OP' ? OP_VOICE_NOTE_TEMPLATE : VOICE_NOTE_TEMPLATE;
 }
 
@@ -4449,7 +4490,7 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
   activeIndex = targetIndex;
   const draft = records[targetIndex];
   setContinuationStatus('Creating your note...');
-  const generated = await sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry || (message => setContinuationStatus(message)), draft.visitType || selectedVisitType);
+  const generated = await sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry || (message => setContinuationStatus(message)), draft.visitType || selectedVisitType, draft.patientData, draft.visitDate);
   draft.transcription = generated.text;
   draft.patientData = generated.patientData;
   draft.voiceDraft = false;
@@ -4734,7 +4775,7 @@ function blobToBase64(blob){
   });
 }
 
-async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visitType = selectedVisitType){
+async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visitType = selectedVisitType, existingPatientData = null, existingVisitDate = null){
   console.log('[WOYZ Audio] Captured Blob:', { size: audioBlob.size, type: audioBlob.type });
   const avgChunkSize = audioChunks.length ? (audioBlob.size / audioChunks.length) : 0;
   if (audioChunks.length > 5 && avgChunkSize < 400){
@@ -4769,11 +4810,21 @@ async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visit
   try{ parsed = JSON.parse(responseText); }
   catch(error){ throw noteServiceError('The service returned an invalid structured response.', true); }
   console.log('[WOYZ Gemini] Parsed JSON:', parsed);
+
+  const getValidProp = (val, fallback) => (val && val !== 'NIL' ? String(val).trim() : (fallback && fallback !== 'NIL' ? String(fallback).trim() : 'NIL'));
+
   const patientData = {
-    name:String(parsed.patientName || 'NIL').trim(),
-    age:String(parsed.patientAge || 'NIL').trim(),
-    uhid:String(parsed.patientUhid || 'NIL').trim()
+    name: getValidProp(parsed.patientName, existingPatientData?.name),
+    age: getValidProp(parsed.patientAge, existingPatientData?.age),
+    uhid: getValidProp(parsed.patientUhid, existingPatientData?.uhid),
+    sex: getValidProp(parsed.patientSex, existingPatientData?.sex)
   };
+  if (!parsed.date || parsed.date === 'NIL'){
+    parsed.date = formatTemplateDate(existingVisitDate || selectedVisitDate);
+  }
+  if (!parsed.patientSex || parsed.patientSex === 'NIL'){
+    parsed.patientSex = patientData.sex;
+  }
   return {text:formatGeneratedOutput(parsed, mode, patientData, visitContext),patientData};
 }
 
@@ -4823,8 +4874,8 @@ async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt
     {model:GEMINI_MODELS[0],waitMs:2800},
     {model:GEMINI_MODELS[1],waitMs:4500},
     {model:GEMINI_MODELS[1],waitMs:7500},
-    {model:GEMINI_MODELS[2],waitMs:11000},
-    {model:GEMINI_MODELS[2],waitMs:0}
+    {model:GEMINI_MODELS[2] || GEMINI_MODELS[0],waitMs:11000},
+    {model:GEMINI_MODELS[2] || GEMINI_MODELS[0],waitMs:0}
   ];
   const requestTimeoutMs = 120000;
   const maxAttempts = attemptPlan.length;
@@ -4882,7 +4933,9 @@ function formatGeneratedOutput(data, mode, patient, visitType = selectedVisitTyp
     return `${patientHeader}\n\n${String(data.text || '').trim()}`.trim();
   }
   if (mode === 'Medical certificate'){
-    return `${patientHeader}\nDate: ${data.date || 'NIL'}\nSex: ${data.patientSex || 'NIL'}\n\n${String(data.certificateBody || '').trim()}`.trim();
+    const certDate = data.date && data.date !== 'NIL' ? data.date : formatTemplateDate(patient.visitDate || selectedVisitDate);
+    const certSex = patient.sex && patient.sex !== 'NIL' ? patient.sex : (data.patientSex || 'NIL');
+    return `${patientHeader}\nDate: ${certDate}\nSex: ${certSex}\n\n${String(data.certificateBody || '').trim()}`.trim();
   }
   const sections = [
     ['Presenting Complaint',data.presentingComplaint],
@@ -5183,13 +5236,34 @@ async function createVoiceDraft(mode = null){
     const selectedMode = mode || null;
     const requestedVisitType = 'OP';
     const requestedDateString = dateInputValue(selectedVisitDate);
+    const activeRecord = activeIndex !== null ? records[activeIndex] : null;
+    const inheritedPatientData = activeRecord?.patientData ? {
+      name: activeRecord.patientData.name || activeRecord.name || 'NIL',
+      age: activeRecord.patientData.age || activeRecord.age || 'NIL',
+      uhid: activeRecord.patientData.uhid || activeRecord.uhid || 'NIL',
+      sex: activeRecord.patientData.sex || activeRecord.sex || 'NIL'
+    } : (activeRecord?.name && activeRecord.name !== 'Visit Note draft' ? {
+      name: activeRecord.name || 'NIL',
+      age: activeRecord.age || 'NIL',
+      uhid: activeRecord.uhid || 'NIL',
+      sex: activeRecord.sex || 'NIL'
+    } : {name:'NIL',age:'NIL',uhid:'NIL',sex:'NIL'});
+    const inheritedVisitDate = activeRecord?.visitDate || requestedDateString;
+
     openPreparingNewVoiceDock(selectedMode);
     searchScope = 'today';
     selectedTimelineKey = null;
     updateSearchScopeToggle();
     try{
       if (selectExistingLocalDraft({visitType:requestedVisitType,fallbackToAny:false,voiceDraftOnly:true})){
-        if (records[activeIndex]?.voiceDraft) openNewVoiceDock();
+        if (records[activeIndex]?.voiceDraft){
+          if (inheritedPatientData.name !== 'NIL' && (records[activeIndex].patientData?.name === 'NIL' || !records[activeIndex].patientData)){
+            records[activeIndex].patientData = inheritedPatientData;
+            records[activeIndex].visitDate = inheritedVisitDate;
+            if (selectedMode) records[activeIndex].selectedMode = selectedMode;
+          }
+          openNewVoiceDock();
+        }
         return;
       }
       stopVoiceTimer();
@@ -5201,7 +5275,7 @@ async function createVoiceDraft(mode = null){
         heading: voiceDraftHeadingForMode(selectedMode),
         createdAt:null,
         createdAtLabel:createdAt,
-        visitDate:requestedDateString,
+        visitDate:inheritedVisitDate,
         visitType:requestedVisitType,
         admissionDate:null,
         isDraft: true,
@@ -5214,7 +5288,7 @@ async function createVoiceDraft(mode = null){
         selectedMode,
         status: 'Ready to record',
         transcription:'',
-        patientData:{name:'NIL',age:'NIL',uhid:'NIL',sex:'NIL'}
+        patientData: inheritedPatientData
       };
       pendingSelectId = newDraftRef.id;
       pendingNewVoiceDockId = newDraftRef.id;
