@@ -2313,6 +2313,28 @@ const continuationStatus = document.getElementById('continuationStatus');
 const continuationModeBar = document.getElementById('continuationModeBar');
 
 const GEMINI_KEY_STORAGE = 'woyz_gemini_authorization_key';
+
+function getEffectiveGeminiApiKeyDetails(){
+  if (currentUser && ownerProfiles[currentUser.uid] && ownerProfiles[currentUser.uid].geminiApiKey){
+    const key = ownerProfiles[currentUser.uid].geminiApiKey.trim();
+    return {
+      key: key,
+      source: 'admin',
+      masked: key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : '••••••••'
+    };
+  }
+  const localKey = localStorage.getItem(GEMINI_KEY_STORAGE) || '';
+  return {
+    key: localKey,
+    source: localKey ? 'local' : 'none',
+    masked: localKey.length > 8 ? `${localKey.slice(0, 4)}...${localKey.slice(-4)}` : (localKey ? '••••••••' : 'None')
+  };
+}
+
+function getEffectiveGeminiApiKey(){
+  return getEffectiveGeminiApiKeyDetails().key;
+}
+window.getEffectiveGeminiApiKeyDetails = getEffectiveGeminiApiKeyDetails;
 const ANONYMIZE_STORAGE = 'woyz_anonymize_display';
 const DEFAULT_PRESCRIPTION_LAYOUT = {
   includeMalayalam:true,
@@ -3300,6 +3322,9 @@ onAuthStateChanged(auth,user => {
       updateDeactivatedUIState();
       userEmail.textContent = displayCredentialName(profile.credentialName) || '';
       ownerProfiles[user.uid] = profile;
+      if (typeof refreshAuthSetting === 'function') refreshAuthSetting();
+      const keyInfo = getEffectiveGeminiApiKeyDetails();
+      console.log(`[WOYZ Gemini Key Status] Loaded user profile. Key Source: ${keyInfo.source === 'admin' ? 'Admin-Assigned Key (Firestore)' : (keyInfo.source === 'local' ? 'Local Storage Key' : 'None Set')}, Key: ${keyInfo.masked}`);
       prescriptionLayoutState = normalizedPrescriptionLayout(profile.prescriptionLayout);
       if (layoutModal.classList.contains('open')) loadLayoutModal();
 
@@ -4100,7 +4125,7 @@ async function stopAndTranscribe(){
   try{
     const audioBlob = draft.audioBlob || await stopMediaRecorder();
     draft.audioBlob = audioBlob;
-    const apiKey = localStorage.getItem(GEMINI_KEY_STORAGE);
+    const apiKey = getEffectiveGeminiApiKey();
     if (!apiKey){
       draft.status = 'Add your authorization key in Settings, then try again.';
       openAuthModal();
@@ -4511,7 +4536,7 @@ async function stopAndAppendContinuation(){
   try{
     const audioBlob = continuationState.audioBlob || await stopMediaRecorder();
     continuationState.audioBlob = audioBlob;
-    const apiKey = localStorage.getItem(GEMINI_KEY_STORAGE);
+    const apiKey = getEffectiveGeminiApiKey();
     if (!apiKey){
       setContinuationStatus('Add authorization key in Settings.');
       openAuthModal();
@@ -4844,6 +4869,8 @@ function blobToBase64(blob){
 }
 
 async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visitType = selectedVisitType, existingPatientData = null, existingVisitDate = null){
+  const keyDetails = getEffectiveGeminiApiKeyDetails();
+  console.log(`[WOYZ Gemini Key] Key Source: ${keyDetails.source === 'admin' ? 'Admin-Assigned Key (Firestore)' : (keyDetails.source === 'local' ? 'Local Storage Key' : 'None')}, Key: ${keyDetails.masked}`);
   console.log('[WOYZ Audio] Captured Blob:', { size: audioBlob.size, type: audioBlob.type });
   const avgChunkSize = audioChunks.length ? (audioBlob.size / audioChunks.length) : 0;
   if (audioChunks.length > 5 && avgChunkSize < 400){
@@ -5556,7 +5583,7 @@ async function permanentlyDeleteTrashRecord(record){
 }
 
 function refreshAuthSetting(){
-  authKeyBtn.style.display = localStorage.getItem(GEMINI_KEY_STORAGE) ? 'none' : 'flex';
+  authKeyBtn.style.display = getEffectiveGeminiApiKey() ? 'none' : 'flex';
 }
 
 refreshAuthSetting();

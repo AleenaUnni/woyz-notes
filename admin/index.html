@@ -511,6 +511,10 @@
           <label class="form-label" for="createTargetConfig">Target firebaseConfig JSON *</label>
           <textarea class="form-input" id="createTargetConfig" rows="3" style="height:auto; font-family:'IBM Plex Mono',monospace; font-size:12px;" placeholder='{"apiKey": "AIza...", "projectId": "patel-clinic-1a2b3"}' required></textarea>
         </div>
+        <div class="form-group">
+          <label class="form-label" for="createGeminiApiKey">Gemini API Key (Optional)</label>
+          <input class="form-input" id="createGeminiApiKey" type="password" placeholder="AIzaSy... (Assigned Gemini key)" autocomplete="off">
+        </div>
 
         <div class="auth-error" id="createDoctorError" style="margin-bottom:12px;"></div>
         <div style="display:flex; justify-content:flex-end; gap:10px;">
@@ -547,6 +551,10 @@
         <div class="form-group">
           <label class="form-label" for="editTargetFirebaseConfig">Target firebaseConfig JSON</label>
           <textarea class="form-input" id="editTargetFirebaseConfig" rows="4" style="height:auto; font-family:'IBM Plex Mono',monospace; font-size:12px;" placeholder='{"apiKey": "...", "projectId": "..."}'></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="editGeminiApiKey">Gemini API Key</label>
+          <input class="form-input" id="editGeminiApiKey" type="password" placeholder="AIzaSy... (Leave blank or enter assigned key)">
         </div>
 
         <div class="auth-error" id="editConfigError" style="margin-bottom:12px;"></div>
@@ -630,6 +638,7 @@ const createDoctorPassword = document.getElementById('createDoctorPassword');
 const createDoctorName = document.getElementById('createDoctorName');
 const createTargetProjectId = document.getElementById('createTargetProjectId');
 const createTargetConfig = document.getElementById('createTargetConfig');
+const createGeminiApiKey = document.getElementById('createGeminiApiKey');
 const createDoctorError = document.getElementById('createDoctorError');
 const createDoctorSubmitBtn = document.getElementById('createDoctorSubmitBtn');
 
@@ -642,6 +651,7 @@ const editUserEmail = document.getElementById('editUserEmail');
 const editCredentialName = document.getElementById('editCredentialName');
 const editTargetProjectId = document.getElementById('editTargetProjectId');
 const editTargetFirebaseConfig = document.getElementById('editTargetFirebaseConfig');
+const editGeminiApiKey = document.getElementById('editGeminiApiKey');
 const editConfigError = document.getElementById('editConfigError');
 const editConfigSubmitBtn = document.getElementById('editConfigSubmitBtn');
 
@@ -770,6 +780,7 @@ function renderUsersTable() {
             ${isDeactivated ? '<span class="badge badge-deactivated">🚫 Deactivated</span>' : '<span class="badge badge-active">Active</span>'}
             ${isAdmin ? '<span class="badge badge-admin">Admin Account</span>' : ''}
             ${hasTarget ? '<span class="badge badge-target">Isolated Target DB</span>' : '<span class="badge badge-central">Central DB</span>'}
+            ${u.geminiApiKey ? '<span class="badge badge-active" style="background:#e6f4ea; color:#137333; border:1px solid #ceead6;" title="Admin Gemini Key Assigned">🔑 Gemini Key</span>' : ''}
           </div>
         </td>
         <td>
@@ -940,6 +951,7 @@ function showUserModal(u) {
       <div><strong>Email:</strong> ${escapeHtml(u.email || 'N/A')}</div>
       <div><strong>User UID:</strong> <code style="background:var(--bg); padding:2px 6px; border-radius:4px;">${escapeHtml(u.uid)}</code></div>
       <div><strong>Credential / Display Name:</strong> ${escapeHtml(u.credentialName || 'Not configured')}</div>
+      <div><strong>Gemini API Key:</strong> ${u.geminiApiKey ? `<code style="background:var(--bg); padding:2px 6px; border-radius:4px;">${escapeHtml(u.geminiApiKey.slice(0, 6))}...${escapeHtml(u.geminiApiKey.slice(-4))}</code>` : '<span style="color:var(--muted);">Not configured</span>'}</div>
       <div><strong>Target Project ID:</strong> ${escapeHtml(u.targetProjectId || 'None (Central DB)')}</div>
       <div><strong>Target Firebase Config:</strong></div>
       <pre style="background:var(--bg); padding:12px; border-radius:8px; overflow-x:auto; font-family:'IBM Plex Mono',monospace; font-size:12px;">${escapeHtml(u.targetFirebaseConfig || 'None')}</pre>
@@ -976,6 +988,7 @@ createDoctorForm.addEventListener('submit', async (e) => {
   const credentialName = createDoctorName.value.trim();
   const targetProjectId = createTargetProjectId.value.trim();
   const targetConfigRaw = createTargetConfig.value.trim();
+  const geminiApiKey = createGeminiApiKey ? createGeminiApiKey.value.trim() : '';
 
   let formattedConfig = '';
   if (targetConfigRaw) {
@@ -1012,6 +1025,10 @@ createDoctorForm.addEventListener('submit', async (e) => {
     }
     if (targetProjectId) docData.targetProjectId = targetProjectId;
     if (formattedConfig) docData.targetFirebaseConfig = formattedConfig;
+    if (geminiApiKey) {
+      docData.geminiApiKey = geminiApiKey;
+      docData.geminiApiKeyUpdatedAt = serverTimestamp();
+    }
 
     await setDoc(doc(db, 'users', newUid), docData, { merge: true });
 
@@ -1042,6 +1059,7 @@ function showEditModal(u) {
   editCredentialName.value = u.credentialName || '';
   editTargetProjectId.value = u.targetProjectId || '';
   editTargetFirebaseConfig.value = u.targetFirebaseConfig || '';
+  if (editGeminiApiKey) editGeminiApiKey.value = u.geminiApiKey || '';
   editConfigModal.classList.add('open');
 }
 
@@ -1058,6 +1076,7 @@ editConfigForm.addEventListener('submit', async (e) => {
   const credentialName = editCredentialName.value.trim();
   const targetProjectId = editTargetProjectId.value.trim();
   const targetConfigRaw = editTargetFirebaseConfig.value.trim();
+  const geminiApiKey = editGeminiApiKey ? editGeminiApiKey.value.trim() : '';
 
   let formattedConfig = '';
   if (targetConfigRaw) {
@@ -1080,8 +1099,12 @@ editConfigForm.addEventListener('submit', async (e) => {
       credentialName: credentialName,
       credentialUpdatedAt: serverTimestamp(),
       targetProjectId: targetProjectId,
-      targetFirebaseConfig: formattedConfig
+      targetFirebaseConfig: formattedConfig,
+      geminiApiKey: geminiApiKey
     };
+    if (geminiApiKey) {
+      updateData.geminiApiKeyUpdatedAt = serverTimestamp();
+    }
     await setDoc(doc(db, 'users', uid), updateData, { merge: true });
 
     if (targetProjectId) {
