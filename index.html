@@ -4217,7 +4217,7 @@ function renderContinuationDock(){
   continuationPauseBtn.style.display = continuationState.hasStarted && !hasSavedAudio ? 'grid' : 'none';
   continuationExtendBtn.style.display = continuationState.hasStarted && !hasSavedAudio ? 'grid' : 'none';
   continuationStopBtn.style.display = continuationState.hasStarted ? 'grid' : 'none';
-  continuationCloseBtn.style.display = 'grid';
+  continuationCloseBtn.style.display = (continuationState.hasStarted || continuationState.processing) ? 'none' : 'grid';
   continuationCloseBtn.setAttribute('aria-label', continuationState.mode === 'new' ? 'Close voice draft' : 'Close continuation dictation');
   continuationPauseBtn.innerHTML = continuationState.recording
     ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>'
@@ -4755,7 +4755,10 @@ function wireContinuationDock(){
   continuationPauseBtn.addEventListener('click', pauseResumeContinuationRecording);
   continuationExtendBtn.addEventListener('click', extendContinuationRecording);
   continuationStopBtn.addEventListener('click', stopAndAppendContinuation);
-  continuationCloseBtn.addEventListener('click', () => closeContinuationDock());
+  continuationCloseBtn.addEventListener('click', () => {
+    if (continuationState.hasStarted || continuationState.processing) return;
+    closeContinuationDock();
+  });
   continuationDockHandle.addEventListener('pointerdown', dragContinuationDock);
   continuationModeBar.addEventListener('click', event => {
     const button = event.target.closest('[data-new-voice-mode]');
