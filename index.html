@@ -1738,6 +1738,26 @@
   ::-webkit-scrollbar{ width:9px; }
   ::-webkit-scrollbar-thumb{ background:#D8DBD7; border-radius:8px; }
   ::-webkit-scrollbar-track{ background:transparent; }
+
+  .deactivated-notice-banner{
+    width:100%;
+    background:#fee2e2;
+    border-bottom:1px solid #f87171;
+    color:#991b1b;
+    padding:10px 16px;
+    font-size:13px;
+    font-weight:600;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-shrink:0;
+    z-index:999;
+  }
+  .record-btn.disabled-deactivated, .add-note-btn.disabled-deactivated{
+    opacity:0.55;
+    cursor:not-allowed !important;
+    filter:grayscale(0.5);
+  }
 </style>
 </head>
 <body>
@@ -1799,6 +1819,10 @@
 
   <!-- MAIN -->
   <main class="main">
+    <div class="deactivated-notice-banner" id="deactivatedNoticeBanner" style="display:none;">
+      <span>⚠️</span>
+      <span><strong>Account Deactivated:</strong> Your account has been deactivated by the administrator. You can view your existing records, but creating new notes (voice or manual) is disabled.</span>
+    </div>
     <div class="main-topbar" id="topbar">
       <div class="topbar-patient" id="topbarPatient" role="button" tabindex="0" aria-label="Open previous notes">
         <span class="topbar-patient-name" id="topbarName"></span>
@@ -2093,6 +2117,14 @@ const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch
 const centralDb = getFirestore(firebaseApp);
 const db = centralDb;
 let targetDb = centralDb;
+let isUserDeactivated = false;
+
+function updateDeactivatedUIState(){
+  const deactivatedBanner = document.getElementById('deactivatedNoticeBanner');
+  if (deactivatedBanner) {
+    deactivatedBanner.style.display = isUserDeactivated ? 'flex' : 'none';
+  }
+}
 
 function getActiveDb(){
   return targetDb || centralDb;
@@ -3239,6 +3271,8 @@ onAuthStateChanged(auth,user => {
     userEmail.textContent = '';
     userProfileUnsubscribe = onSnapshot(doc(centralDb,'users',user.uid), snapshot => {
       const profile = snapshot.data() || {};
+      isUserDeactivated = profile.status === 'deactivated' || profile.isDeactivated === true;
+      updateDeactivatedUIState();
       userEmail.textContent = displayCredentialName(profile.credentialName) || '';
       ownerProfiles[user.uid] = profile;
       prescriptionLayoutState = normalizedPrescriptionLayout(profile.prescriptionLayout);
@@ -3296,6 +3330,8 @@ onAuthStateChanged(auth,user => {
     ownerProfiles = {};
     subscribeToGroups();
   }else{
+    isUserDeactivated = false;
+    updateDeactivatedUIState();
     clearRecordSearch();
     clearNotesSubscriptions();
     clearAllNotesSubscriptions();
@@ -4363,6 +4399,10 @@ function closeContinuationDock({releaseMic = true} = {}){
 
 async function startContinuationRecording(){
   if (!continuationState.open || continuationState.processing) return;
+  if (isUserDeactivated) {
+    window.alert('Your account is currently deactivated by the administrator. Voice recording is disabled.');
+    return;
+  }
   if (continuationState.mode === 'new' && !continuationState.targetId){
     setContinuationStatus('Preparing voice note...');
     return;
@@ -5235,6 +5275,10 @@ async function withDraftCreationLock(task){
 
 async function createVoiceDraft(mode = null){
   if (!currentUser) return;
+  if (isUserDeactivated) {
+    window.alert('Your account is currently deactivated by the administrator. Voice note recording and creation is disabled.');
+    return;
+  }
   return withDraftCreationLock(async () => {
     const selectedMode = mode || null;
     const requestedVisitType = 'OP';
@@ -5316,6 +5360,10 @@ async function createVoiceDraft(mode = null){
 
 async function createManualDraft(){
   if (!currentUser) return;
+  if (isUserDeactivated) {
+    window.alert('Your account is currently deactivated by the administrator. Manual note creation is disabled.');
+    return;
+  }
   return withDraftCreationLock(async () => {
     searchScope = 'today';
     selectedTimelineKey = null;
@@ -6192,6 +6240,10 @@ credentialSaveBtn.addEventListener('click', async () => {
 });
 
 saveDraftBtn.addEventListener('click', async () => {
+  if (isUserDeactivated) {
+    window.alert('Your account is currently deactivated by the administrator. Saving notes is disabled.');
+    return;
+  }
   if (activeIndex === null || !records[activeIndex]) return;
   const draft = records[activeIndex];
   const editor = document.getElementById('generatedNoteEditor');

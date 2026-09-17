@@ -34,7 +34,10 @@ service cloud.firestore {
         "email",
         "emailUpdatedAt",
         "targetProjectId",
-        "targetFirebaseConfig"
+        "targetFirebaseConfig",
+        "status",
+        "isDeactivated",
+        "statusUpdatedAt"
       ];
     }
 

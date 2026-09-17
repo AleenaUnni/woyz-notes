@@ -289,6 +289,12 @@
   .badge-target{ background:var(--teal-wash); color:var(--teal); }
   .badge-central{ background:var(--bg); color:var(--muted); border:1px solid var(--border); }
   .badge-admin{ background:var(--gold-wash); color:var(--gold); }
+  .badge-active{ background:#dcfce7; color:#166534; border:1px solid #86efac; }
+  .badge-deactivated{ background:#fee2e2; color:#991b1b; border:1px solid #f87171; }
+  .btn-deactivate{ background:#991b1b; color:#ffffff; border:1px solid #7f1d1d; font-weight:600; }
+  .btn-deactivate:hover{ background:#7f1d1d; }
+  .btn-activate{ background:#166534; color:#ffffff; border:1px solid #14532d; font-weight:600; }
+  .btn-activate:hover{ background:#14532d; }
 
   .json-code{
     font-family:'IBM Plex Mono',monospace;
@@ -751,6 +757,7 @@ function renderUsersTable() {
   userTableBody.innerHTML = filtered.map(u => {
     const hasTarget = Boolean(u.targetProjectId || u.targetFirebaseConfig);
     const isAdmin = u.email === 'drgigy@gmail.com' || ADMIN_EMAILS.includes(u.email);
+    const isDeactivated = u.status === 'deactivated' || u.isDeactivated === true;
 
     return `
       <tr>
@@ -759,8 +766,11 @@ function renderUsersTable() {
           <div class="user-uid">UID: ${escapeHtml(u.uid)} ${u.credentialName ? `• ${escapeHtml(u.credentialName)}` : ''}</div>
         </td>
         <td>
-          ${isAdmin ? '<span class="badge badge-admin">Admin Account</span>' : ''}
-          ${hasTarget ? '<span class="badge badge-target">Isolated Target DB</span>' : '<span class="badge badge-central">Central DB</span>'}
+          <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+            ${isDeactivated ? '<span class="badge badge-deactivated">🚫 Deactivated</span>' : '<span class="badge badge-active">Active</span>'}
+            ${isAdmin ? '<span class="badge badge-admin">Admin Account</span>' : ''}
+            ${hasTarget ? '<span class="badge badge-target">Isolated Target DB</span>' : '<span class="badge badge-central">Central DB</span>'}
+          </div>
         </td>
         <td>
           ${u.targetProjectId ? `<strong style="font-family:'IBM Plex Mono',monospace; color:var(--teal-deep);">${escapeHtml(u.targetProjectId)}</strong>` : '<span style="color:var(--muted);">—</span>'}
@@ -772,6 +782,7 @@ function renderUsersTable() {
           <div style="display:flex; gap:6px; flex-wrap:wrap;">
             <button class="btn view-btn" data-uid="${u.uid}">Profile</button>
             <button class="btn edit-btn btn-primary" data-uid="${u.uid}">Edit Config</button>
+            ${!isAdmin ? (isDeactivated ? `<button class="btn toggle-status-btn btn-activate" data-uid="${u.uid}" data-action="activate">Activate</button>` : `<button class="btn toggle-status-btn btn-deactivate" data-uid="${u.uid}" data-action="deactivate">Deactivate</button>`) : ''}
             ${u.targetProjectId ? `<button class="btn deploy-rules-btn" data-targetid="${escapeHtml(u.targetProjectId)}" style="background:var(--teal-wash); color:var(--teal); font-weight:600;">Deploy Rules</button>` : ''}
           </div>
         </td>
@@ -792,6 +803,42 @@ function renderUsersTable() {
       const uid = e.target.dataset.uid;
       const userDoc = allUsers.find(u => u.uid === uid);
       if (userDoc) showEditModal(userDoc);
+    });
+  });
+
+  document.querySelectorAll('.toggle-status-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const btnEl = e.currentTarget;
+      const uid = btnEl.dataset.uid;
+      const action = btnEl.dataset.action;
+      const userDoc = allUsers.find(u => u.uid === uid);
+      if (!userDoc) return;
+
+      const isDeactivating = action === 'deactivate';
+      const confirmMsg = isDeactivating
+        ? `Are you sure you want to DEACTIVATE ${userDoc.email || uid}?\n\n- User data will NOT be removed from Central or Target Firebase.\n- The user will still be able to log in.\n- The user will NOT be able to create new notes (voice or manual).`
+        : `Are you sure you want to REACTIVATE ${userDoc.email || uid}?`;
+
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        btnEl.disabled = true;
+        btnEl.textContent = 'Updating...';
+        const newStatus = isDeactivating ? 'deactivated' : 'active';
+        await setDoc(doc(db, 'users', uid), {
+          status: newStatus,
+          isDeactivated: isDeactivating,
+          statusUpdatedAt: serverTimestamp()
+        }, { merge: true });
+
+        userDoc.status = newStatus;
+        userDoc.isDeactivated = isDeactivating;
+        renderUsersTable();
+      } catch (err) {
+        console.error('Error updating user status:', err);
+        alert('Failed to update user status: ' + err.message);
+        renderUsersTable();
+      }
     });
   });
 
