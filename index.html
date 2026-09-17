@@ -1753,9 +1753,27 @@
     flex-shrink:0;
     z-index:999;
   }
-  .record-btn.disabled-deactivated, .add-note-btn.disabled-deactivated{
-    opacity:0.55;
+  body.is-deactivated-user .record-btn,
+  body.is-deactivated-user .add-note-btn,
+  body.is-deactivated-user .save-draft-btn,
+  body.is-deactivated-user .delete-btn,
+  body.is-deactivated-user .mobile-delete-btn,
+  body.is-deactivated-user .mobile-doc-action,
+  body.is-deactivated-user .template-item,
+  body.is-deactivated-user .topbar-review-btn {
+    opacity:0.65;
     cursor:not-allowed !important;
+  }
+  body.is-deactivated-user .record-btn:hover,
+  body.is-deactivated-user .add-note-btn:hover,
+  body.is-deactivated-user .save-draft-btn:hover,
+  body.is-deactivated-user .delete-btn:hover,
+  body.is-deactivated-user .mobile-delete-btn:hover,
+  body.is-deactivated-user .mobile-doc-action:hover,
+  body.is-deactivated-user .template-item:hover,
+  body.is-deactivated-user .topbar-review-btn:hover {
+    cursor:not-allowed !important;
+    opacity:0.5;
     filter:grayscale(0.5);
   }
 </style>
@@ -2124,6 +2142,13 @@ function updateDeactivatedUIState(){
   if (deactivatedBanner) {
     deactivatedBanner.style.display = isUserDeactivated ? 'flex' : 'none';
   }
+  document.body.classList.toggle('is-deactivated-user', isUserDeactivated);
+
+  const disabledTitle = isUserDeactivated ? 'Account Deactivated — Action disabled' : '';
+  ['recordBtn', 'addNoteBtn', 'saveDraftBtn', 'deleteBtn', 'topbarContinueBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.title = disabledTitle;
+  });
 }
 
 function getActiveDb(){
@@ -6187,6 +6212,10 @@ trashCloseBtn.addEventListener('click', closeTrashModal);
 trashDoneBtn.addEventListener('click', closeTrashModal);
 trashModal.addEventListener('click', event => { if (event.target === trashModal) closeTrashModal(); });
 trashList.addEventListener('click', async event => {
+  if (isUserDeactivated) {
+    window.alert('Your account is currently deactivated by the administrator. Modifying trash is disabled.');
+    return;
+  }
   const button = event.target.closest('[data-trash-action]');
   if (!button) return;
   const record = trashRecordFromButton(button);
@@ -6297,6 +6326,10 @@ function extractPatientFromNote(text, fallback = {}){
 }
 
 deleteBtn.addEventListener('click', async () => {
+  if (isUserDeactivated) {
+    window.alert('Your account is currently deactivated by the administrator. Deleting notes is disabled.');
+    return;
+  }
   if (activeIndex === null) return;
   const draft = records[activeIndex];
   if (!draft?.firestoreId || !currentUser) return;
