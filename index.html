@@ -2533,16 +2533,25 @@ function renderTodayEntries(){
     const btn = document.createElement('button');
     btn.className = 'entry' + (i === activeIndex ? ' active' : '');
     const serialNumber = records.length - i;
-    const generatedEntry = r.kind === 'generated' && r.everSaved;
-    const namedDraft = (r.isDraft || generatedEntry) && r.everSaved && r.patientData?.name && r.patientData.name !== 'NIL';
+    const generatedEntry = r.kind === 'generated';
+    const patientName = r.patientData?.name || r.name;
+    const hasPatientName = Boolean(patientName && String(patientName).trim() && !/^nil$/i.test(patientName) && !/^(Visit Note|Manual note|Medical certificate|Reply letter) draft$/i.test(patientName));
+    const isDraftOrGen = Boolean(r.isDraft || generatedEntry);
+    const namedDraft = isDraftOrGen && hasPatientName;
     const manualNote = r.noteType === 'manual' || r.selectedMode === 'Manual note';
-    const modeSuffix = r.everSaved && ['Reply letter','Medical certificate'].includes(r.selectedMode) ? ` (${r.selectedMode})` : '';
-    const draftEntryName = namedDraft ? `${r.patientData.name}${modeSuffix}` : `${manualNote ? 'Manual note' : 'Visit Note'} draft${modeSuffix}`;
-    const entryName = anonymizeEnabled && (namedDraft || !(r.isDraft || generatedEntry))
+    const modeSuffix = ['Reply letter','Medical certificate'].includes(r.selectedMode) ? ` (${r.selectedMode})` : '';
+
+    let defaultDraftLabel = 'Visit Note draft';
+    if (r.selectedMode === 'Medical certificate') defaultDraftLabel = 'Medical certificate draft';
+    else if (r.selectedMode === 'Reply letter') defaultDraftLabel = 'Reply letter draft';
+    else if (manualNote) defaultDraftLabel = 'Manual note draft';
+
+    const draftEntryName = namedDraft ? `${patientName}${modeSuffix}` : defaultDraftLabel;
+    const entryName = anonymizeEnabled && (namedDraft || !isDraftOrGen)
       ? `${displayPatientName(r)}${modeSuffix}`
-      : (r.isDraft || generatedEntry) ? draftEntryName : r.name;
-    const entryMeta = compactPatientMetaText((r.isDraft || generatedEntry) && !namedDraft ? r.createdAt : patientMetaLine(r));
-    const ownerCode = ownerInitials(noteOwnerUid(r)) || ((r.isDraft || generatedEntry) ? (namedDraft ? initials(r.patientData.name) : 'D') : initials(r.name));
+      : isDraftOrGen ? draftEntryName : (r.name ? `${r.name}${modeSuffix}` : draftEntryName);
+    const entryMeta = compactPatientMetaText(isDraftOrGen && !namedDraft ? r.createdAt : patientMetaLine(r));
+    const ownerCode = ownerInitials(noteOwnerUid(r)) || (isDraftOrGen ? (namedDraft ? initials(patientName) : 'D') : initials(r.name || patientName));
     btn.innerHTML = `
       <span class="entry-avatar">${escapeHtml(serialNumber)}</span>
       <span class="entry-text">
@@ -2920,6 +2929,28 @@ function applyLocalDirtyRecord(record){
   };
 }
 
+let autosaveTimer = null;
+function scheduleAutosave(record){
+  if (!record || !currentUser || isUserDeactivated) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(async () => {
+    try {
+      const patientData = extractPatientFromNote(record.transcription, record.patientData);
+      record.patientData = patientData;
+      if (patientData.name && patientData.name !== 'NIL') record.name = patientData.name;
+      await persistRecord(record, {
+        transcription: record.transcription,
+        patientData: patientData,
+        selectedMode: record.selectedMode,
+        updatedAt: serverTimestamp()
+      });
+      clearRecordDirty(record);
+    } catch(err) {
+      console.error('Autosave error:', err);
+    }
+  }, 1200);
+}
+
 function captureActiveEditorState(){
   if (activeIndex === null || !records[activeIndex] || anonymizeEnabled) return;
   const editor = document.getElementById('generatedNoteEditor');
@@ -2929,8 +2960,16 @@ function captureActiveEditorState(){
   const text = editorPlainText(editor);
   if (text !== (record.transcription || '')){
     record.transcription = text;
+    record.patientData = extractPatientFromNote(text, record.patientData);
+    if (record.patientData?.name && record.patientData.name !== 'NIL') record.name = record.patientData.name;
     record.saved = false;
     markRecordDirty(record);
+    renderTodayEntries();
+    persistRecord(record, {
+      transcription: record.transcription,
+      patientData: record.patientData,
+      updatedAt: serverTimestamp()
+    }).catch(err => console.error('Auto persist on selection change failed:', err));
   }
 }
 
@@ -3940,8 +3979,12 @@ function renderGeneratedNote(draft){
     });
     editor.addEventListener('input', () => {
       draft.transcription = editorPlainText(editor);
+      draft.patientData = extractPatientFromNote(draft.transcription, draft.patientData);
+      if (draft.patientData?.name && draft.patientData.name !== 'NIL') draft.name = draft.patientData.name;
       draft.saved = false;
       markRecordDirty(draft);
+      renderTodayEntries();
+      scheduleAutosave(draft);
       clearTimeout(saveFeedbackTimer);
       saveFeedbackUntil = 0;
       saveDraftBtn.querySelector('span').textContent = 'Save';
@@ -4147,7 +4190,14 @@ async function stopAndTranscribe(){
       }
     );
     draft.transcription = generated.text;
-    draft.patientData = generated.patientData;
+    const extractedPatient = extractPatientFromNote(generated.text, generated.patientData);
+    draft.patientData = {
+      name: (generated.patientData?.name && generated.patientData.name !== 'NIL') ? generated.patientData.name : extractedPatient.name,
+      age: (generated.patientData?.age && generated.patientData.age !== 'NIL') ? generated.patientData.age : extractedPatient.age,
+      uhid: (generated.patientData?.uhid && generated.patientData.uhid !== 'NIL') ? generated.patientData.uhid : extractedPatient.uhid,
+      sex: (generated.patientData?.sex && generated.patientData.sex !== 'NIL') ? generated.patientData.sex : extractedPatient.sex
+    };
+    if (draft.patientData.name && draft.patientData.name !== 'NIL') draft.name = draft.patientData.name;
     draft.audioBlob = null;
     draft.voiceDraft = false;
     draft.kind = 'generated';
@@ -4334,17 +4384,24 @@ function selectedRecordCanContinue(){
 
 function formatTemplateDate(visitDateStr){
   if (!visitDateStr || visitDateStr === 'NIL') {
-    const today = new Date();
-    const d = String(today.getDate()).padStart(2, '0');
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const y = today.getFullYear();
+    const ref = (selectedVisitDate instanceof Date && !isNaN(selectedVisitDate)) ? selectedVisitDate : new Date();
+    const d = String(ref.getDate()).padStart(2, '0');
+    const m = String(ref.getMonth() + 1).padStart(2, '0');
+    const y = ref.getFullYear();
     return `${d}/${m}/${y}`;
   }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(visitDateStr)){
-    const [y, m, d] = visitDateStr.split('-');
+  if (typeof visitDateStr === 'object' && visitDateStr instanceof Date) {
+    const d = String(visitDateStr.getDate()).padStart(2, '0');
+    const m = String(visitDateStr.getMonth() + 1).padStart(2, '0');
+    const y = visitDateStr.getFullYear();
     return `${d}/${m}/${y}`;
   }
-  return visitDateStr;
+  const str = String(visitDateStr).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)){
+    const [y, m, d] = str.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return str;
 }
 
 function newVoiceTemplateForMode(mode, visitType = selectedVisitType, patientData = null, visitDateStr = null){
@@ -4582,7 +4639,14 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
   setContinuationStatus('Creating your note...');
   const generated = await sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry || (message => setContinuationStatus(message)), draft.visitType || selectedVisitType, draft.patientData, draft.visitDate);
   draft.transcription = generated.text;
-  draft.patientData = generated.patientData;
+  const extractedPatient = extractPatientFromNote(generated.text, generated.patientData);
+  draft.patientData = {
+    name: (generated.patientData?.name && generated.patientData.name !== 'NIL') ? generated.patientData.name : extractedPatient.name,
+    age: (generated.patientData?.age && generated.patientData.age !== 'NIL') ? generated.patientData.age : extractedPatient.age,
+    uhid: (generated.patientData?.uhid && generated.patientData.uhid !== 'NIL') ? generated.patientData.uhid : extractedPatient.uhid,
+    sex: (generated.patientData?.sex && generated.patientData.sex !== 'NIL') ? generated.patientData.sex : extractedPatient.sex
+  };
+  if (draft.patientData.name && draft.patientData.name !== 'NIL') draft.name = draft.patientData.name;
   draft.voiceDraft = false;
   draft.kind = 'generated';
   draft.saved = false;
@@ -5028,7 +5092,8 @@ function formatGeneratedOutput(data, mode, patient, visitType = selectedVisitTyp
     return `${patientHeader}\n\n${String(data.text || '').trim()}`.trim();
   }
   if (mode === 'Medical certificate'){
-    const certDate = data.date && data.date !== 'NIL' ? data.date : formatTemplateDate(patient.visitDate || selectedVisitDate);
+    const defaultDate = formatTemplateDate(patient?.visitDate || selectedVisitDate);
+    const certDate = formatTemplateDate(data.date && data.date !== 'NIL' ? data.date : defaultDate);
     const certSex = patient.sex && patient.sex !== 'NIL' ? patient.sex : (data.patientSex || 'NIL');
     return `${patientHeader}\nDate: ${certDate}\nSex: ${certSex}\n\n${String(data.certificateBody || '').trim()}`.trim();
   }
