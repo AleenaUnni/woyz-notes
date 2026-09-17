@@ -2119,7 +2119,7 @@
 
 <script type="module">
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
-import { browserLocalPersistence, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
+import { browserSessionPersistence, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import { getFirestore, collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDoc, getDocs, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 
@@ -2129,7 +2129,7 @@ if (window.location.hash === '#admin' || window.location.pathname.endsWith('/adm
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
-const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch(error => {
+const authPersistenceReady = setPersistence(auth, browserSessionPersistence).catch(error => {
   console.warn('Unable to enable persistent login:', error);
 });
 const centralDb = getFirestore(firebaseApp);

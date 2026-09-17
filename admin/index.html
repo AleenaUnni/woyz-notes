@@ -595,12 +595,13 @@
 
 <script type="module">
 import { initializeApp, deleteApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import { getFirestore, collection, getDocs, doc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firebaseConfig } from '../firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+setPersistence(auth, browserSessionPersistence).catch(console.error);
 const db = getFirestore(app);
 
 // DOM Elements
@@ -701,9 +702,11 @@ adminLoginForm.addEventListener('submit', async (e) => {
   const password = adminPasswordInput.value;
 
   try {
+    await setPersistence(auth, browserSessionPersistence);
     const cred = await signInWithEmailAndPassword(auth, email, password);
     if (!isAdminUser(cred.user)) {
       authError.textContent = 'Account authenticated, but is not an administrator.';
+      await signOut(auth);
     }
   } catch (err) {
     authError.textContent = err.message || 'Invalid admin credentials.';
