@@ -5401,18 +5401,19 @@ async function createVoiceDraft(mode = null){
     const requestedVisitType = 'OP';
     const requestedDateString = dateInputValue(selectedVisitDate);
     const activeRecord = activeIndex !== null ? records[activeIndex] : null;
-    const inheritedPatientData = activeRecord?.patientData ? {
+    const isSpecialDocMode = Boolean(selectedMode && ['Medical certificate', 'Reply letter'].includes(selectedMode));
+    const inheritedPatientData = (isSpecialDocMode && activeRecord?.patientData) ? {
       name: activeRecord.patientData.name || activeRecord.name || 'NIL',
       age: activeRecord.patientData.age || activeRecord.age || 'NIL',
       uhid: activeRecord.patientData.uhid || activeRecord.uhid || 'NIL',
       sex: activeRecord.patientData.sex || activeRecord.sex || 'NIL'
-    } : (activeRecord?.name && activeRecord.name !== 'Visit Note draft' ? {
+    } : ((isSpecialDocMode && activeRecord?.name && activeRecord.name !== 'Visit Note draft' && activeRecord.name !== 'Manual note draft') ? {
       name: activeRecord.name || 'NIL',
       age: activeRecord.age || 'NIL',
       uhid: activeRecord.uhid || 'NIL',
       sex: activeRecord.sex || 'NIL'
     } : {name:'NIL',age:'NIL',uhid:'NIL',sex:'NIL'});
-    const inheritedVisitDate = activeRecord?.visitDate || requestedDateString;
+    const inheritedVisitDate = (isSpecialDocMode && activeRecord?.visitDate) ? activeRecord.visitDate : requestedDateString;
 
     openPreparingNewVoiceDock(selectedMode);
     searchScope = 'today';
