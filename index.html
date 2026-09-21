@@ -5477,50 +5477,7 @@ async function createVoiceDraft(mode = null){
 }
 
 async function createManualDraft(){
-  if (!currentUser) return;
-  if (isUserDeactivated) {
-    window.alert('Your account is currently deactivated by the administrator. Manual note creation is disabled.');
-    return;
-  }
-  return withDraftCreationLock(async () => {
-    searchScope = 'today';
-    selectedTimelineKey = null;
-    updateSearchScopeToggle();
-    if (selectExistingLocalDraft({manualDraftOnly:true})){
-      if (continuationState.mode === 'new') closeContinuationDock();
-      return;
-    }
-    const existingDraft = await existingDraftSnapshotForCurrentUser();
-    if (existingDraft){
-      selectExistingDraftSnapshot(existingDraft);
-      if (continuationState.mode === 'new') closeContinuationDock();
-      return;
-    }
-    stopVoiceTimer();
-    stopMediaTracks();
-    if (continuationState.mode === 'new') closeContinuationDock();
-    const now = new Date();
-    const createdAt = now.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}) + ', ' + now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-    const selectedDateString = dateInputValue(selectedVisitDate);
-    const newDraft = await addDoc(userNotesCollection(),{
-      heading: 'Manual note draft',
-      createdAt:serverTimestamp(),
-      createdAtLabel:createdAt,
-      visitDate:selectedDateString,
-      visitType:selectedVisitType,
-      admissionDate:selectedVisitType === 'IP' ? selectedDateString : null,
-      isDraft:true,
-      everSaved:false,
-      saved:false,
-      kind:'generated',
-      noteType:'manual',
-      selectedMode:'Manual note',
-      status:'Type your note',
-      transcription:MANUAL_NOTE_TEMPLATE,
-      patientData:{name:'NIL',age:'NIL',uhid:'NIL',sex:'NIL'}
-    });
-    pendingSelectId = newDraft.id;
-  });
+  return createVoiceDraft();
 }
 
 function openAuthModal(){
@@ -6197,8 +6154,11 @@ recordBtn.addEventListener('click', async event => {
   await createVoiceDraft();
   closeMobileSidebar();
 });
-addNoteBtn.addEventListener('click', createManualDraft);
-addNoteBtn.addEventListener('click', closeMobileSidebar);
+addNoteBtn.addEventListener('click', async event => {
+  event.preventDefault();
+  await createVoiceDraft();
+  closeMobileSidebar();
+});
 
 document.addEventListener('keydown', (event) => {
   const isTyping = ['INPUT','TEXTAREA'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
