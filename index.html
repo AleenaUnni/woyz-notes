@@ -642,6 +642,91 @@
   .entry.active .entry-name{ color:var(--teal-deep); }
   .entry.active .entry-uhid{ color:var(--teal); }
 
+  .patient-group-wrap{
+    display:flex;
+    flex-direction:column;
+    margin-bottom:2px;
+  }
+  .patient-group-wrap:last-child .entry{
+    border-bottom-color:transparent;
+  }
+
+  .entry-chevron{
+    position:absolute;
+    right:12px;top:50%;
+    transform:translateY(-50%);
+    color:var(--teal-deep);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    opacity:0.8;
+    transition:opacity .12s ease;
+  }
+  .entry:hover .entry-chevron{ opacity:1; }
+
+  .child-entries-list{
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+    padding:3px 0 6px 0;
+  }
+
+  .child-entry{
+    position:relative;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:0 4px 0 36px;
+    padding:7px 12px;
+    border-radius:8px;
+    border:1px solid transparent;
+    background:transparent;
+    cursor:pointer;
+    text-align:left;
+    transition:background .12s ease, border-color .12s ease, color .12s ease;
+    font-family:inherit;
+    font-size:13px;
+    font-weight:500;
+    color:var(--ink);
+    width:calc(100% - 40px);
+  }
+
+  .child-entry:hover{
+    background:var(--teal-wash);
+  }
+
+  .child-entry:focus-visible{
+    outline:2px solid var(--focus);
+    outline-offset:1px;
+  }
+
+  .child-icon{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:var(--muted);
+    flex-shrink:0;
+    transition:color .12s ease;
+  }
+
+  .child-name{
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    flex:1;
+  }
+
+  .child-entry.active{
+    background:var(--teal-wash);
+    border-color:rgba(31,95,82,0.35);
+    color:var(--teal-deep);
+    font-weight:600;
+  }
+
+  .child-entry.active .child-icon{
+    color:var(--teal);
+  }
+
   /* ---------- MAIN ---------- */
   .main{
     flex:1;
@@ -2520,51 +2605,210 @@ function renderEntries(){
   renderTodayEntries();
 }
 
+let expandedPatientGroups = new Set();
+let autoExpandedActiveKey = null;
+
+function hasPatientName(r){
+  const patientName = r?.patientData?.name || r?.name;
+  return Boolean(patientName && String(patientName).trim() && !/^nil$/i.test(patientName) && !/^(Visit Note|Manual note|Medical certificate|Reply letter) draft$/i.test(patientName));
+}
+
+function getPatientGroupKey(r, originalIndex) {
+  const identity = patientIdentity(r);
+  const uhid = normalizePatientToken(identity.uhid);
+  if (uhid && uhid !== 'nil') return `uhid:${uhid}`;
+
+  const name = normalizePatientToken(identity.name || r?.name);
+  const isGenericName = !name || name === 'nil' || /^(Visit Note|Manual note|Medical certificate|Reply letter) draft$/i.test(name);
+
+  if (!isGenericName) {
+    return `name:${name}`;
+  }
+
+  return `draft:${r?.firestoreId || r?.id || originalIndex}`;
+}
+
+function getNoteDocumentLabel(r) {
+  if (r.selectedMode === 'Medical certificate') return 'Medical Certificate';
+  if (r.selectedMode === 'Reply letter') return 'Reply Letter';
+  if (r.selectedMode === 'Manual note' || r.noteType === 'manual') return 'Manual Note';
+  if (r.selectedMode === 'Review dictation') return 'Review Note';
+
+  if (r.name) {
+    if (/Medical certificate/i.test(r.name)) return 'Medical Certificate';
+    if (/Reply letter/i.test(r.name)) return 'Reply Letter';
+    if (/Manual note/i.test(r.name)) return 'Manual Note';
+  }
+  if (r.heading) {
+    if (/Medical certificate/i.test(r.heading)) return 'Medical Certificate';
+    if (/Reply letter/i.test(r.heading)) return 'Reply Letter';
+    if (/Manual note/i.test(r.heading)) return 'Manual Note';
+  }
+
+  return 'Visit Note';
+}
+
 function renderTodayEntries(){
   entryList.innerHTML = '';
   const visibleRecords = records
     .map((record, index) => ({record, index}))
     .filter(item => recordMatchesSearch(item.record));
-  if (!visibleRecords.length && recordSearchTerm){
-    entryList.innerHTML = '<div class="empty-sub" style="padding:10px 8px;">No matching records.</div>';
+
+  if (!visibleRecords.length){
+    entryList.innerHTML = `<div class="empty-sub" style="padding:10px 8px;">${recordSearchTerm ? 'No matching records.' : 'No OP notes saved for this date.'}</div>`;
     return;
   }
-  visibleRecords.forEach(({record:r, index:i}) => {
-    const btn = document.createElement('button');
-    btn.className = 'entry' + (i === activeIndex ? ' active' : '');
-    const serialNumber = records.length - i;
-    const generatedEntry = r.kind === 'generated';
-    const patientName = r.patientData?.name || r.name;
-    const hasPatientName = Boolean(patientName && String(patientName).trim() && !/^nil$/i.test(patientName) && !/^(Visit Note|Manual note|Medical certificate|Reply letter) draft$/i.test(patientName));
-    const isDraftOrGen = Boolean(r.isDraft || generatedEntry);
-    const namedDraft = isDraftOrGen && hasPatientName;
-    const manualNote = r.noteType === 'manual' || r.selectedMode === 'Manual note';
-    const modeSuffix = ['Reply letter','Medical certificate'].includes(r.selectedMode) ? ` (${r.selectedMode})` : '';
 
-    let defaultDraftLabel = 'Visit Note draft';
-    if (r.selectedMode === 'Medical certificate') defaultDraftLabel = 'Medical certificate draft';
-    else if (r.selectedMode === 'Reply letter') defaultDraftLabel = 'Reply letter draft';
-    else if (manualNote) defaultDraftLabel = 'Manual note draft';
+  const groups = [];
+  const groupMap = new Map();
 
-    const draftEntryName = namedDraft ? `${patientName}${modeSuffix}` : defaultDraftLabel;
-    const entryName = anonymizeEnabled && (namedDraft || !isDraftOrGen)
-      ? `${displayPatientName(r)}${modeSuffix}`
-      : isDraftOrGen ? draftEntryName : (r.name ? `${r.name}${modeSuffix}` : draftEntryName);
-    const entryMeta = compactPatientMetaText(isDraftOrGen && !namedDraft ? r.createdAt : patientMetaLine(r));
-    const ownerCode = ownerInitials(noteOwnerUid(r)) || (isDraftOrGen ? (namedDraft ? initials(patientName) : 'D') : initials(r.name || patientName));
-    btn.innerHTML = `
+  visibleRecords.forEach(({record: r, index: i}) => {
+    const key = getPatientGroupKey(r, i);
+    if (!groupMap.has(key)) {
+      const group = {
+        key: key,
+        patientName: displayPatientName(r),
+        patientMeta: '',
+        identity: patientIdentity(r),
+        items: []
+      };
+      groupMap.set(key, group);
+      groups.push(group);
+    }
+    groupMap.get(key).items.push({record: r, originalIndex: i});
+  });
+
+  groups.forEach(group => {
+    let bestUhid = 'NIL';
+    let bestSex = 'NIL';
+    let bestAge = 'NIL';
+    const firstRecord = group.items[0].record;
+
+    for (const item of group.items) {
+      const id = patientIdentity(item.record);
+      if (bestUhid === 'NIL' && id.uhid && id.uhid !== 'NIL') bestUhid = id.uhid;
+      if (bestSex === 'NIL' && id.sex && id.sex !== 'NIL') bestSex = id.sex;
+      if (bestAge === 'NIL' && id.age && id.age !== 'NIL') bestAge = id.age;
+    }
+
+    const mergedRecord = {
+      ...firstRecord,
+      patientData: {
+        ...firstRecord.patientData,
+        name: firstRecord.patientData?.name || firstRecord.name,
+        uhid: bestUhid !== 'NIL' ? bestUhid : (firstRecord.patientData?.uhid || firstRecord.uhid),
+        sex: bestSex !== 'NIL' ? bestSex : (firstRecord.patientData?.sex || firstRecord.sex),
+        age: bestAge !== 'NIL' ? bestAge : (firstRecord.patientData?.age || firstRecord.age)
+      }
+    };
+
+    group.patientMeta = compactPatientMetaText(hasPatientName(firstRecord) || !firstRecord.isDraft ? patientMetaLine(mergedRecord) : firstRecord.createdAt);
+  });
+
+  // Automatically expand group containing activeIndex if active note changed
+  if (activeIndex !== null && records[activeIndex]) {
+    const activeKey = getPatientGroupKey(records[activeIndex], activeIndex);
+    if (autoExpandedActiveKey !== activeKey) {
+      autoExpandedActiveKey = activeKey;
+      expandedPatientGroups.add(activeKey);
+    }
+  }
+
+  groups.forEach((group, gIndex) => {
+    const count = group.items.length;
+    const firstItem = group.items[0];
+    const serialNumber = groups.length - gIndex;
+    const isExpanded = expandedPatientGroups.has(group.key);
+    const containsActive = group.items.some(item => item.originalIndex === activeIndex);
+    const r = firstItem.record;
+    const namedDraft = (r.isDraft || r.kind === 'generated') && hasPatientName(r);
+    const isDraftOrGen = Boolean(r.isDraft || r.kind === 'generated');
+    const ownerCode = ownerInitials(noteOwnerUid(r)) || (isDraftOrGen ? (namedDraft ? initials(displayPatientName(r)) : 'D') : initials(displayPatientName(r)));
+
+    const groupContainer = document.createElement('div');
+    groupContainer.className = 'patient-group-wrap';
+
+    const parentBtn = document.createElement('button');
+    parentBtn.type = 'button';
+    parentBtn.className = 'entry patient-row' + (containsActive ? ' active' : '') + (count > 1 ? ' has-children' : '');
+
+    const chevronSvg = isExpanded
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>`
+      : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
+
+    parentBtn.innerHTML = `
       <span class="entry-avatar">${escapeHtml(serialNumber)}</span>
       <span class="entry-text">
-        <div class="entry-name">${escapeHtml(entryName)}</div>
-        <div class="entry-uhid">${escapeHtml(entryMeta)}</div>
+        <div class="entry-name">${escapeHtml(group.patientName)}</div>
+        <div class="entry-uhid">${escapeHtml(group.patientMeta)}</div>
       </span>
-      <span class="entry-owner">${escapeHtml(ownerCode)}</span>
+      ${count > 1 ? `<span class="entry-chevron">${chevronSvg}</span>` : `<span class="entry-owner">${escapeHtml(ownerCode)}</span>`}
     `;
-    btn.addEventListener('click', () => {
-      selectEntry(i);
-      closeMobileSidebar();
-    });
-    entryList.appendChild(btn);
+
+    if (count > 1) {
+      parentBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (expandedPatientGroups.has(group.key)) {
+          expandedPatientGroups.delete(group.key);
+        } else {
+          expandedPatientGroups.add(group.key);
+        }
+        renderTodayEntries();
+      });
+    } else {
+      parentBtn.addEventListener('click', () => {
+        selectEntry(firstItem.originalIndex);
+        closeMobileSidebar();
+      });
+    }
+
+    groupContainer.appendChild(parentBtn);
+
+    if (count > 1 && isExpanded) {
+      const childList = document.createElement('div');
+      childList.className = 'child-entries-list';
+
+      const labelCounts = {};
+      group.items.forEach(item => {
+        const baseLabel = getNoteDocumentLabel(item.record);
+        labelCounts[baseLabel] = (labelCounts[baseLabel] || 0) + 1;
+      });
+
+      const seenLabels = {};
+      group.items.forEach(item => {
+        const baseLabel = getNoteDocumentLabel(item.record);
+        let label = baseLabel;
+        if (labelCounts[baseLabel] > 1) {
+          seenLabels[baseLabel] = (seenLabels[baseLabel] || 0) + 1;
+          label = `${baseLabel} ${seenLabels[baseLabel]}`;
+        }
+
+        const childBtn = document.createElement('button');
+        childBtn.type = 'button';
+        childBtn.className = 'child-entry' + (item.originalIndex === activeIndex ? ' active' : '');
+        childBtn.innerHTML = `
+          <span class="child-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M4 19V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/>
+              <path d="M8 12h8M8 16h5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="child-name">${escapeHtml(label)}</span>
+        `;
+
+        childBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectEntry(item.originalIndex);
+          closeMobileSidebar();
+        });
+
+        childList.appendChild(childBtn);
+      });
+
+      groupContainer.appendChild(childList);
+    }
+
+    entryList.appendChild(groupContainer);
   });
 }
 
@@ -2575,9 +2819,8 @@ function patientSearchKey(record){
   const uhid = normalizePatientToken(identity.uhid);
   if (uhid && uhid !== 'nil') return `uhid:${uhid}`;
   const name = normalizePatientToken(identity.name || record?.name);
-  const sex = normalizePatientToken(identity.sex);
-  const age = normalizePatientToken(identity.age);
-  return `name:${name}|sex:${sex}|age:${age}`;
+  if (name && name !== 'nil') return `name:${name}`;
+  return '';
 }
 
 function normalizePatientToken(value){
