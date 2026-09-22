@@ -746,6 +746,30 @@ function updateStats() {
   statCentral.textContent = centralCount;
 }
 
+function formatCompactNumber(num) {
+  if (!num) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+  return Number(num).toLocaleString();
+}
+
+function parseTimestampDate(val) {
+  if (!val) return null;
+  if (typeof val.toDate === 'function') {
+    try { return val.toDate(); } catch(e) {}
+  }
+  if (typeof val.seconds === 'number') {
+    return new Date(val.seconds * 1000);
+  }
+  if (val instanceof Date) return val;
+  if (typeof val === 'number') return new Date(val);
+  if (typeof val === 'string') {
+    const parsed = new Date(val);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
 function renderUsersTable() {
   const searchTerm = userSearchInput.value.trim().toLowerCase();
   
@@ -771,6 +795,7 @@ function renderUsersTable() {
     const hasTarget = Boolean(u.targetProjectId || u.targetFirebaseConfig);
     const isAdmin = u.email === 'drgigy@gmail.com' || ADMIN_EMAILS.includes(u.email);
     const isDeactivated = u.status === 'deactivated' || u.isDeactivated === true;
+    const promptCount = u.geminiUsage?.promptCount || 0;
 
     return `
       <tr>
@@ -784,6 +809,7 @@ function renderUsersTable() {
             ${isAdmin ? '<span class="badge badge-admin">Admin Account</span>' : ''}
             ${hasTarget ? '<span class="badge badge-target">Isolated Target DB</span>' : '<span class="badge badge-central">Central DB</span>'}
             ${u.geminiApiKey ? '<span class="badge badge-active" style="background:#e6f4ea; color:#137333; border:1px solid #ceead6;" title="Admin Gemini Key Assigned">🔑 Gemini Key</span>' : ''}
+            ${promptCount > 0 ? `<span class="badge badge-active" style="background:#f1f3fe; color:#1a73e8; border:1px solid #d2e3fc;" title="Gemini AI Usage">⚡ ${promptCount} Prompts (${formatCompactNumber(u.geminiUsage?.totalTokens || 0)} tokens)</span>` : ''}
           </div>
         </td>
         <td>
@@ -949,12 +975,55 @@ document.getElementById('filterTargetBtn').addEventListener('click', (e) => {
 // Modal View Logic
 function showUserModal(u) {
   modalUserTitle.textContent = `User Profile — ${u.email || u.uid}`;
+  const usage = u.geminiUsage || {};
+  const lastTimeObj = parseTimestampDate(usage.lastPromptAt);
+  const lastTimeStr = lastTimeObj ? lastTimeObj.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
+  const modeCounts = usage.modeCounts || {};
+  const modeEntries = Object.entries(modeCounts);
+
   modalUserContent.innerHTML = `
     <div style="display:flex; flex-direction:column; gap:16px;">
       <div><strong>Email:</strong> ${escapeHtml(u.email || 'N/A')}</div>
       <div><strong>User UID:</strong> <code style="background:var(--bg); padding:2px 6px; border-radius:4px;">${escapeHtml(u.uid)}</code></div>
       <div><strong>Credential / Display Name:</strong> ${escapeHtml(u.credentialName || 'Not configured')}</div>
       <div><strong>Gemini API Key:</strong> ${u.geminiApiKey ? `<code style="background:var(--bg); padding:2px 6px; border-radius:4px;">${escapeHtml(u.geminiApiKey.slice(0, 6))}...${escapeHtml(u.geminiApiKey.slice(-4))}</code>` : '<span style="color:var(--muted);">Not configured</span>'}</div>
+      
+      <div style="background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:14px; margin-top:4px;">
+        <div style="font-weight:600; font-size:14px; color:var(--ink); margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+          <span>⚡ Gemini AI Prompt & Token Analytics</span>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px;">
+          <div style="background:#fff; border:1px solid var(--border); padding:10px; border-radius:8px;">
+            <div style="font-size:11px; color:var(--muted); text-transform:uppercase;">Total Prompts</div>
+            <div style="font-size:18px; font-weight:700; color:var(--ink); margin-top:4px;">${(usage.promptCount || 0).toLocaleString()}</div>
+          </div>
+          <div style="background:#fff; border:1px solid var(--border); padding:10px; border-radius:8px;">
+            <div style="font-size:11px; color:var(--muted); text-transform:uppercase;">Total Tokens</div>
+            <div style="font-size:18px; font-weight:700; color:var(--ink); margin-top:4px;">${formatCompactNumber(usage.totalTokens || 0)}</div>
+          </div>
+          <div style="background:#fff; border:1px solid var(--border); padding:10px; border-radius:8px;">
+            <div style="font-size:11px; color:var(--muted); text-transform:uppercase;">Input Tokens</div>
+            <div style="font-size:18px; font-weight:700; color:var(--ink); margin-top:4px;">${(usage.promptTokens || 0).toLocaleString()}</div>
+          </div>
+          <div style="background:#fff; border:1px solid var(--border); padding:10px; border-radius:8px;">
+            <div style="font-size:11px; color:var(--muted); text-transform:uppercase;">Output Tokens</div>
+            <div style="font-size:18px; font-weight:700; color:var(--ink); margin-top:4px;">${(usage.responseTokens || 0).toLocaleString()}</div>
+          </div>
+        </div>
+        <div style="margin-top:12px; font-size:12px; color:var(--muted); display:flex; gap:16px; flex-wrap:wrap;">
+          <div><strong>Last Model:</strong> ${escapeHtml(usage.lastModelUsed || 'N/A')}</div>
+          <div><strong>Last Prompt:</strong> ${lastTimeStr}</div>
+        </div>
+        ${modeEntries.length > 0 ? `
+          <div style="margin-top:12px; font-size:12px;">
+            <strong>Breakdown by Mode:</strong>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
+              ${modeEntries.map(([m, c]) => `<span style="background:#fff; border:1px solid var(--border); padding:3px 8px; border-radius:12px; font-size:11px;">${escapeHtml(m)}: <strong>${c}</strong></span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+
       <div><strong>Target Project ID:</strong> ${escapeHtml(u.targetProjectId || 'None (Central DB)')}</div>
       <div><strong>Target Firebase Config:</strong></div>
       <pre style="background:var(--bg); padding:12px; border-radius:8px; overflow-x:auto; font-family:'IBM Plex Mono',monospace; font-size:12px;">${escapeHtml(u.targetFirebaseConfig || 'None')}</pre>

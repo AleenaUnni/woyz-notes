@@ -39,7 +39,8 @@ service cloud.firestore {
         "isDeactivated",
         "statusUpdatedAt",
         "geminiApiKey",
-        "geminiApiKeyUpdatedAt"
+        "geminiApiKeyUpdatedAt",
+        "geminiUsage"
       ];
     }
 

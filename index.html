@@ -448,6 +448,17 @@
   .modal-backdrop{ position:fixed; inset:0; z-index:100; display:none; align-items:center; justify-content:center; background:rgba(15,23,20,.48); padding:24px; }
   .modal-backdrop.open{ display:flex; }
   .auth-modal{ width:min(460px,100%); background:#fff; border-radius:18px; box-shadow:0 24px 70px -20px rgba(0,0,0,.45); padding:26px; }
+  .usage-modal{ width:min(520px,100%); max-height:min(780px,90vh); overflow:auto; }
+  .usage-summary-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin:16px 0 18px; }
+  .usage-stat-card{ background:#F8FAFC; border:1px solid var(--border); border-radius:12px; padding:12px 14px; text-align:left; }
+  .usage-stat-value{ font:700 22px/1.2 'Inter',sans-serif; color:var(--teal-deep); }
+  .usage-stat-label{ font-size:11.5px; font-weight:600; color:var(--muted); margin-top:4px; }
+  .usage-details-section{ background:#F8FAFC; border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+  .usage-section-title{ margin:0 0 8px; font-size:11.5px; font-weight:700; color:var(--ink); text-transform:uppercase; letter-spacing:0.5px; }
+  .usage-detail-row{ display:flex; justify-content:space-between; font-size:13px; padding:4px 0; color:var(--ink); border-bottom:1px solid #E2E8F0; }
+  .usage-detail-row:last-child{ border-bottom:0; }
+  .usage-mode-breakdown{ display:flex; flex-direction:column; gap:6px; }
+  .usage-mode-item{ display:flex; justify-content:space-between; font-size:12.5px; padding:7px 10px; background:#fff; border-radius:8px; border:1px solid var(--border); }
   .trash-modal{ width:min(680px,100%); max-height:min(760px,88vh); display:flex; flex-direction:column; }
   .layout-modal{ width:min(720px,100%); max-height:min(820px,90vh); overflow:auto; }
   .auth-modal-head{ display:flex; align-items:center; justify-content:space-between; gap:16px; }
@@ -1982,6 +1993,10 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Sign out
           </button>
+          <button class="settings-item auth-item" id="aiUsageBtn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            AI Usage & Prompts
+          </button>
           <button class="settings-item auth-item" id="authKeyBtn">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M14.5 9.5a4.5 4.5 0 1 1-1.3-3.2L21 14v3h-3v3h-3l-2.2-2.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7" cy="14" r="1" fill="currentColor"/></svg>
             Authorization key
@@ -2207,10 +2222,63 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="aiUsageModal" role="dialog" aria-modal="true" aria-labelledby="aiUsageModalTitle">
+  <div class="auth-modal usage-modal">
+    <div class="auth-modal-head">
+      <div>
+        <div style="font-size:12px; font-weight:600; text-transform:uppercase; color:var(--teal); letter-spacing:0.5px;">Gemini AI Analytics</div>
+        <h2 class="auth-modal-title" id="aiUsageModalTitle" style="margin-top:2px;">AI Prompt & Token Usage</h2>
+      </div>
+      <button class="modal-close" id="aiUsageCloseBtn" aria-label="Close AI Usage dialog">&times;</button>
+    </div>
+    <p class="auth-help">Real-time prompt request count and token metrics for your user account.</p>
+
+    <div class="usage-summary-grid">
+      <div class="usage-stat-card">
+        <div class="usage-stat-value" id="usagePromptCount">0</div>
+        <div class="usage-stat-label">Total Prompts Used</div>
+      </div>
+      <div class="usage-stat-card">
+        <div class="usage-stat-value" id="usageTotalTokens">0</div>
+        <div class="usage-stat-label">Total Tokens Consumed</div>
+      </div>
+      <div class="usage-stat-card">
+        <div class="usage-stat-value" id="usagePromptTokens">0</div>
+        <div class="usage-stat-label">Input / Audio Tokens</div>
+      </div>
+      <div class="usage-stat-card">
+        <div class="usage-stat-value" id="usageResponseTokens">0</div>
+        <div class="usage-stat-label">Output / Note Tokens</div>
+      </div>
+    </div>
+
+    <div class="usage-details-section">
+      <div class="usage-section-title">Latest Request Details</div>
+      <div class="usage-detail-row">
+        <span>Last Model Used:</span>
+        <strong id="usageLastModel">—</strong>
+      </div>
+      <div class="usage-detail-row">
+        <span>Last Request Time:</span>
+        <strong id="usageLastTime">—</strong>
+      </div>
+    </div>
+
+    <div class="usage-details-section" style="margin-top: 14px;">
+      <div class="usage-section-title">Prompts by Note Type</div>
+      <div id="usageModeBreakdown" class="usage-mode-breakdown"></div>
+    </div>
+
+    <div class="auth-actions" style="margin-top: 20px;">
+      <button class="btn btn-copy" id="aiUsageDoneBtn" type="button">Done</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import { browserSessionPersistence, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
-import { getFirestore, collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDoc, getDocs, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+import { getFirestore, collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, serverTimestamp, increment } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 
 if (window.location.hash === '#admin' || window.location.pathname.endsWith('/admin')) {
@@ -2324,6 +2392,10 @@ const saveDraftBtn = document.getElementById('saveDraftBtn');
 const signoutBtn = document.getElementById('signoutBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsMenu = document.getElementById('settingsMenu');
+const aiUsageBtn = document.getElementById('aiUsageBtn');
+const aiUsageModal = document.getElementById('aiUsageModal');
+const aiUsageCloseBtn = document.getElementById('aiUsageCloseBtn');
+const aiUsageDoneBtn = document.getElementById('aiUsageDoneBtn');
 const authKeyBtn = document.getElementById('authKeyBtn');
 const credentialBtn = document.getElementById('credentialBtn');
 const layoutBtn = document.getElementById('layoutBtn');
@@ -3713,6 +3785,7 @@ onAuthStateChanged(auth,user => {
       const isAdmin = ['drgigy@gmail.com', 'aleena.unni@uvjtech.com', 'aleenaunni02@gmail.com'].includes((user.email || '').toLowerCase());
       adminPortalBtn.style.display = isAdmin ? 'inline-flex' : 'none';
     }
+    syncLocalGeminiUsageToCloud(user.uid);
     setDoc(doc(db,'users',user.uid),{
       email:user.email || '',
       emailUpdatedAt:serverTimestamp()
@@ -5260,7 +5333,8 @@ async function sendContinuationAudioToGemini(audioBlob, apiKey, onRetry){
     systemPrompt:'You are a clinical dictation assistant. Convert this additional dictation into complete professional clinical English to append to an existing note. Correct spelling and grammar only. Do not add, remove, infer, summarize, shorten, condense, compress, or change clinical information. Preserve every clearly dictated medicine, dose, route, frequency, duration, investigation, numeric value, unit, date, examination finding, advice, instruction, consultation note, referral, follow-up, and chronology exactly as dictated. Output medicines under the exact heading "Prescription:" only when the doctor explicitly starts a prescription/Rx section or clearly says that the following medicines are prescription/Rx medicines. Medicines dictated under Current Medications, Treatment Plan, advice, or general treatment changes must stay there and must not be duplicated into Prescription. Inside Prescription, use exactly this compact format for each medicine: numbered medicine line containing only Tablet/Cap/Syrup/Inj brand name dose, then one clear English patient instruction with timing, duration, and food or administration instruction without repeating the medicine name, then one natural Malayalam patient instruction for the same medicine without repeating the medicine name. Always include the Malayalam instruction line for every prescription medicine, written in simple patient-friendly Kerala Malayalam with natural wording, not literal machine translation. Do not write the word Malayalam before the Malayalam text. Do not translate medicine brand names into Malayalam. Keep medicine names and doses in English in the numbered medicine line only. Always write tablet medicines as Tablet, not Tab. Do not use internal labels like morning, noon, night, bedtime, Duration, or Instructions in prescription lines. If medicines are dictated only as medication history or existing background medicines, output them under the exact heading "Current Medications:" and format each medicine as a numbered item. If investigation reports are dictated, output them under the exact heading "Review of Investigations:" and format each investigation/report as a numbered item, with every numbered item starting on a new line. If investigation orders or advised tests are dictated, output them under the exact heading "Treatment Plan:" and number each ordered investigation or test separately. If an investigation report has multiple findings or sentences, put each finding on its own line below the numbered investigation without numbering those finding lines. If blood investigations are dictated, group all blood tests from the same date under one numbered item such as "Blood investigations on 12th January 2026:"; below that item, list each blood value on its own unnumbered line. Never number individual blood values. If blood reports are dictated from multiple dates, create one numbered "Blood investigations on [date]:" item for each date. Add standard conventional units for common blood values even when units are not dictated, while preserving dictated values exactly. If advice, instructions, consultation advice, treatment changes, or investigation orders are dictated, preserve the dictated heading when present and list each separate instruction one by one. If no investigations, medicines, prescriptions, advice, or instructions are dictated, do not add those headings; return only the complete continuation paragraph or dictated headings. Do not repeat patient identifiers unless the doctor dictates them as clinical content. Return only the requested JSON object.',
     taskPrompt:'Transcribe this continuation dictation as complete append-only note text. Keep all dictated headings and every dictated clinical detail. Do not create a full new visit note. Do not summarize, shorten, condense, or omit medicines, doses, investigations, values, instructions, advice, or follow-up. Create a "Prescription:" section only when the doctor explicitly starts a prescription/Rx section or clearly says that the following medicines are prescription/Rx medicines. Do not move medicines from Current Medications, Treatment Plan, advice, or general treatment changes into Prescription. When Prescription is explicitly dictated, format each medicine as three lines: numbered Tablet/Cap/Syrup/Inj brand name dose; English patient instruction without repeating the medicine name; natural patient-friendly Kerala Malayalam instruction without repeating the medicine name. Always include the Malayalam instruction line for each prescription medicine. Do not put prescribed medicines under Current Medications. Only create a "Current Medications:" section when medicines are dictated as medication history or existing background medicines. Only create a "Review of Investigations:" section when investigation reports are dictated; then number the investigation reports one by one. For multi-sentence investigation findings, place each finding on a separate unnumbered line below that investigation. For blood investigations, use one numbered item per blood-report date and list the individual blood values below it without numbering, adding standard units when absent. If investigation orders or advised tests are dictated, place them under "Treatment Plan:" and number each ordered investigation or test separately. For advice, instructions, consultation notes, treatment changes, or investigation orders, keep the dictated heading when present and list separate items one by one.',
     responseSchema:continuationResponseSchema(),
-    onRetry
+    onRetry,
+    mode:'Review dictation'
   });
   const responseText = payload.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
   if (!responseText) throw noteServiceError('The service returned an empty response.', true);
@@ -5359,7 +5433,8 @@ async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visit
     systemPrompt,
     taskPrompt:taskPrompts[mode],
     responseSchema,
-    onRetry
+    onRetry,
+    mode:selectedMode || 'Visit Note'
   });
   const responseText = payload.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
   console.log('[WOYZ Gemini] Response Text:', responseText);
@@ -5428,7 +5503,116 @@ async function runUntilGenerated(task, {setStatus,shouldContinue} = {}){
   throw noteServiceError('Note generation was stopped.', false);
 }
 
-async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt,taskPrompt,responseSchema,onRetry}){
+function formatCompactNumber(num) {
+  if (!num) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+  return Number(num).toLocaleString();
+}
+
+function getLocalGeminiUsage(uid) {
+  if (!uid) return {};
+  try {
+    const raw = localStorage.getItem(`woyz_gemini_usage_${uid}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) {
+    return {};
+  }
+}
+
+function saveLocalGeminiUsage(uid, usage) {
+  if (!uid) return;
+  try {
+    localStorage.setItem(`woyz_gemini_usage_${uid}`, JSON.stringify(usage));
+  } catch(e) {}
+}
+
+async function syncLocalGeminiUsageToCloud(uid) {
+  if (!uid) return;
+  const localUsage = getLocalGeminiUsage(uid);
+  if (!localUsage.promptCount) return;
+
+  try {
+    const userRef = doc(centralDb, 'users', uid);
+    const snap = await getDoc(userRef);
+    const cloudUsage = snap.exists() ? (snap.data().geminiUsage || {}) : {};
+
+    if ((cloudUsage.promptCount || 0) < localUsage.promptCount) {
+      console.log('[WOYZ Gemini Usage] Auto-syncing local usage to Cloud Firestore:', localUsage);
+      await setDoc(userRef, {
+        geminiUsage: {
+          promptCount: localUsage.promptCount,
+          promptTokens: localUsage.promptTokens,
+          responseTokens: localUsage.responseTokens,
+          totalTokens: localUsage.totalTokens,
+          lastPromptAt: serverTimestamp(),
+          lastModelUsed: localUsage.lastModelUsed || 'gemini-2.5-flash',
+          modeCounts: localUsage.modeCounts || {}
+        }
+      }, { merge: true });
+      console.log('[WOYZ Gemini Usage] Cloud sync successful!');
+    }
+  } catch(err) {
+    console.warn('[WOYZ Gemini Usage] Cloud sync warning:', err);
+  }
+}
+
+async function recordGeminiUsage({ mode, model, usageMetadata } = {}) {
+  if (!currentUser) return;
+  const promptTokens = usageMetadata?.promptTokenCount || 0;
+  const responseTokens = usageMetadata?.candidatesTokenCount || 0;
+  const totalTokens = usageMetadata?.totalTokenCount || (promptTokens + responseTokens);
+  const safeMode = mode || 'Visit Note';
+
+  const localUsage = getLocalGeminiUsage(currentUser.uid);
+  const updatedLocal = {
+    promptCount: (localUsage.promptCount || 0) + 1,
+    promptTokens: (localUsage.promptTokens || 0) + promptTokens,
+    responseTokens: (localUsage.responseTokens || 0) + responseTokens,
+    totalTokens: (localUsage.totalTokens || 0) + totalTokens,
+    lastPromptAt: new Date().toISOString(),
+    lastModelUsed: model || 'gemini-2.5-flash',
+    modeCounts: {
+      ...(localUsage.modeCounts || {}),
+      [safeMode]: ((localUsage.modeCounts?.[safeMode]) || 0) + 1
+    }
+  };
+  saveLocalGeminiUsage(currentUser.uid, updatedLocal);
+  console.log('[WOYZ Gemini Usage] Recorded prompt & token usage:', updatedLocal);
+
+  try {
+    const userRef = doc(centralDb, 'users', currentUser.uid);
+    try {
+      await updateDoc(userRef, {
+        'geminiUsage.promptCount': increment(1),
+        'geminiUsage.promptTokens': increment(promptTokens),
+        'geminiUsage.responseTokens': increment(responseTokens),
+        'geminiUsage.totalTokens': increment(totalTokens),
+        'geminiUsage.lastPromptAt': serverTimestamp(),
+        'geminiUsage.lastModelUsed': model || 'gemini-2.5-flash',
+        [`geminiUsage.modeCounts.${safeMode}`]: increment(1)
+      });
+      console.log('[WOYZ Gemini Usage] Updated Firestore centralDb successfully via updateDoc');
+    } catch(updateErr) {
+      await setDoc(userRef, {
+        geminiUsage: {
+          promptCount: updatedLocal.promptCount,
+          promptTokens: updatedLocal.promptTokens,
+          responseTokens: updatedLocal.responseTokens,
+          totalTokens: updatedLocal.totalTokens,
+          lastPromptAt: serverTimestamp(),
+          lastModelUsed: model || 'gemini-2.5-flash',
+          modeCounts: updatedLocal.modeCounts
+        }
+      }, { merge: true });
+      console.log('[WOYZ Gemini Usage] Set Firestore centralDb successfully via setDoc');
+    }
+  } catch (err) {
+    console.warn('[WOYZ Gemini Usage] Saved locally. Unable to sync to Firestore:', err);
+  }
+}
+
+async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt,taskPrompt,responseSchema,onRetry,mode = 'Visit Note'}){
   const attemptPlan = [
     {model:GEMINI_MODELS[0],waitMs:1200},
     {model:GEMINI_MODELS[0],waitMs:2800},
@@ -5476,7 +5660,16 @@ async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt
     const payload = await response.json().catch(() => ({}));
     console.log(`[WOYZ Gemini] Attempt ${attempt} (${plan.model}) response status: ${response.status}`, payload);
     lastMessage = payload.error?.message || response.statusText || 'Note processing failed.';
-    if (response.ok) return payload;
+    if (response.ok) {
+      if (payload?.usageMetadata) {
+        recordGeminiUsage({
+          mode,
+          model: plan.model,
+          usageMetadata: payload.usageMetadata
+        });
+      }
+      return payload;
+    }
     if (!isTransientGeminiError(response.status, lastMessage) || attempt === maxAttempts){
       throw noteServiceError(lastMessage, isTransientGeminiError(response.status, lastMessage));
     }
@@ -5940,6 +6133,82 @@ function openLayoutModal(){
 
 function closeLayoutModal(){
   layoutModal.classList.remove('open');
+}
+
+function openAiUsageModal() {
+  closeSettings();
+  if (currentUser) syncLocalGeminiUsageToCloud(currentUser.uid);
+  const modalEl = document.getElementById('aiUsageModal');
+  if (modalEl) {
+    modalEl.classList.add('open');
+    modalEl.setAttribute('aria-hidden', 'false');
+  }
+
+  try {
+    const profile = (currentUser && ownerProfiles) ? (ownerProfiles[currentUser.uid] || {}) : {};
+    const remoteUsage = profile.geminiUsage || {};
+    const localUsage = currentUser ? getLocalGeminiUsage(currentUser.uid) : {};
+
+    const promptCount = Math.max(remoteUsage.promptCount || 0, localUsage.promptCount || 0);
+    const totalTokens = Math.max(remoteUsage.totalTokens || 0, localUsage.totalTokens || 0);
+    const promptTokens = Math.max(remoteUsage.promptTokens || 0, localUsage.promptTokens || 0);
+    const responseTokens = Math.max(remoteUsage.responseTokens || 0, localUsage.responseTokens || 0);
+    const lastModel = remoteUsage.lastModelUsed || localUsage.lastModelUsed || 'gemini-2.5-flash';
+
+    const rawLastTime = remoteUsage.lastPromptAt || localUsage.lastPromptAt;
+    const lastTimeObj = parseTimestampDate(rawLastTime);
+
+    const modeCounts = remoteUsage.modeCounts && Object.keys(remoteUsage.modeCounts).length > 0
+      ? remoteUsage.modeCounts
+      : (localUsage.modeCounts || {});
+
+    const promptCountEl = document.getElementById('usagePromptCount');
+    if (promptCountEl) promptCountEl.textContent = promptCount.toLocaleString();
+
+    const totalTokensEl = document.getElementById('usageTotalTokens');
+    if (totalTokensEl) totalTokensEl.textContent = formatCompactNumber(totalTokens);
+
+    const promptTokensEl = document.getElementById('usagePromptTokens');
+    if (promptTokensEl) promptTokensEl.textContent = promptTokens.toLocaleString();
+
+    const responseTokensEl = document.getElementById('usageResponseTokens');
+    if (responseTokensEl) responseTokensEl.textContent = responseTokens.toLocaleString();
+
+    const lastModelEl = document.getElementById('usageLastModel');
+    if (lastModelEl) lastModelEl.textContent = lastModel;
+
+    const lastTimeEl = document.getElementById('usageLastTime');
+    if (lastTimeEl) {
+      lastTimeEl.textContent = lastTimeObj 
+        ? lastTimeObj.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) 
+        : 'No requests recorded yet';
+    }
+
+    const modeBreakdownEl = document.getElementById('usageModeBreakdown');
+    if (modeBreakdownEl) {
+      const entries = Object.entries(modeCounts);
+      if (!entries.length) {
+        modeBreakdownEl.innerHTML = '<div style="color:var(--muted); font-size:13px;">No prompt breakdown data recorded yet.</div>';
+      } else {
+        modeBreakdownEl.innerHTML = entries.map(([m, cnt]) => `
+          <div class="usage-mode-item">
+            <span>${escapeHtml(m)}</span>
+            <strong>${cnt} prompt${cnt === 1 ? '' : 's'}</strong>
+          </div>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.warn('[WOYZ AI Usage Modal Error]', err);
+  }
+}
+
+function closeAiUsageModal() {
+  const modalEl = document.getElementById('aiUsageModal');
+  if (modalEl) {
+    modalEl.classList.remove('open');
+    modalEl.setAttribute('aria-hidden', 'true');
+  }
 }
 
 function trashDateLabel(record){
@@ -6584,6 +6853,20 @@ document.addEventListener('keydown', (event) => {
     stopAndTranscribe();
   }
 });
+
+if (aiUsageBtn) aiUsageBtn.addEventListener('click', openAiUsageModal);
+if (aiUsageCloseBtn) aiUsageCloseBtn.addEventListener('click', closeAiUsageModal);
+if (aiUsageDoneBtn) aiUsageDoneBtn.addEventListener('click', closeAiUsageModal);
+if (aiUsageModal) aiUsageModal.addEventListener('click', e => { if (e.target === aiUsageModal) closeAiUsageModal(); });
+
+document.addEventListener('click', (e) => {
+  const usageBtnClick = e.target.closest('#aiUsageBtn');
+  if (usageBtnClick) {
+    e.preventDefault();
+    openAiUsageModal();
+  }
+});
+
 
 authKeyBtn.addEventListener('click', openAuthModal);
 authCloseBtn.addEventListener('click', closeAuthModal);
