@@ -384,6 +384,11 @@
   .generated-note-card{ min-height:100%; background:#fff; padding:34px 38px 90px; display:flex; flex-direction:column; }
   .generated-note-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:18px; }
   .generated-note-title{ margin:0; font:600 27px 'Fraunces',serif; }
+  .save-status-indicator{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:500; color:var(--muted); margin-top:4px; line-height:1.3; }
+  .save-status-indicator .status-dot{ width:7px; height:7px; border-radius:50%; display:inline-block; background-color:#10B981; flex-shrink:0; transition:background-color .3s ease; }
+  .save-status-indicator .status-dot.saving{ background-color:#F59E0B; animation:pulse-status-dot 1.2s infinite ease-in-out; }
+  .save-status-indicator .status-dot.error{ background-color:var(--red); }
+  @keyframes pulse-status-dot{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.35; transform:scale(.85); } }
   .note-editor{ width:100%; min-height:calc(100vh - 190px); overflow:visible; resize:none; border:0; background:#fff; padding:0; color:var(--ink); font:15px/1.55 'Inter',sans-serif; outline:none; white-space:pre-wrap; caret-color:var(--teal); }
   .note-editor strong{ font-weight:800; }
   .note-editor .rx-table,
@@ -3168,30 +3173,119 @@ function applyLocalDirtyRecord(record){
     transcription:dirty.transcription,
     patientData:dirty.patientData || record.patientData,
     ...(dirty.generated ? {kind:'generated', voiceDraft:false, transcribing:false, status:'Note ready'} : {}),
-    saved:false
+    saved:dirty.saved === true
   };
+}
+
+function parseTimestampDate(val) {
+  if (!val) return null;
+  if (typeof val.toDate === 'function') {
+    try { return val.toDate(); } catch(e) {}
+  }
+  if (typeof val.seconds === 'number') {
+    return new Date(val.seconds * 1000);
+  }
+  if (val instanceof Date) return val;
+  if (typeof val === 'number') return new Date(val);
+  if (typeof val === 'string') {
+    const parsed = new Date(val);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function formatLastSavedText(record, isSaving = false, isError = false) {
+  if (isError) return 'Save failed (will retry)';
+  if (isSaving || record?.isSaving === true) return 'Saving changes...';
+  
+  const savedVal = record?.lastSavedAt || record?.updatedAtValue || record?.updatedAt || record?.userSavedAt || record?.createdAtValue || record?.createdAt;
+  const dateObj = parseTimestampDate(savedVal);
+  
+  if (!dateObj) {
+    return 'Saved';
+  }
+
+  const now = new Date();
+  const isToday = dateObj.toDateString() === now.toDateString();
+  const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  if (isToday) {
+    return `Last saved at ${timeStr}`;
+  } else {
+    const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    const shortTimeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `Last saved on ${dateStr} at ${shortTimeStr}`;
+  }
+}
+
+function isSameRecord(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const keyA = recordLocalKey(a);
+  const keyB = recordLocalKey(b);
+  if (keyA && keyB && keyA === keyB) return true;
+  return Boolean(a.firestoreId && b.firestoreId && a.firestoreId === b.firestoreId);
+}
+
+function updateSaveStatusDisplay(record, isSaving = false, isError = false) {
+  if (!record || activeIndex === null || !records[activeIndex]) return;
+  const activeRecord = records[activeIndex];
+  if (!isSameRecord(activeRecord, record)) return;
+
+  if (isSaving) {
+    record.isSaving = true;
+    activeRecord.isSaving = true;
+  } else if (!isError) {
+    record.isSaving = false;
+    activeRecord.isSaving = false;
+    if (record.lastSavedAt) activeRecord.lastSavedAt = record.lastSavedAt;
+  }
+
+  const indicator = document.getElementById('saveStatusIndicator');
+  const textEl = document.getElementById('saveStatusText');
+  const dotEl = indicator?.querySelector('.status-dot');
+  const saveBtn = document.getElementById('saveDraftBtn');
+
+  const text = formatLastSavedText(activeRecord, isSaving, isError);
+
+  if (textEl) {
+    textEl.textContent = text;
+  }
+  if (dotEl) {
+    dotEl.className = 'status-dot ' + (isError ? 'error' : (isSaving || activeRecord.isSaving === true ? 'saving' : 'saved'));
+  }
+  if (saveBtn) {
+    saveBtn.title = text;
+  }
 }
 
 let autosaveTimer = null;
 function scheduleAutosave(record){
   if (!record || !currentUser || isUserDeactivated) return;
   clearTimeout(autosaveTimer);
+  record.isSaving = true;
+  updateSaveStatusDisplay(record, true);
   autosaveTimer = setTimeout(async () => {
     try {
       const patientData = extractPatientFromNote(record.transcription, record.patientData);
       record.patientData = patientData;
       if (patientData.name && patientData.name !== 'NIL') record.name = patientData.name;
+      const saveTime = Date.now();
       await persistRecord(record, {
         transcription: record.transcription,
         patientData: patientData,
         selectedMode: record.selectedMode,
         updatedAt: serverTimestamp()
       });
-      clearRecordDirty(record);
+      record.lastSavedAt = saveTime;
+      record.isSaving = false;
+      updateSaveStatusDisplay(record, false);
     } catch(err) {
       console.error('Autosave error:', err);
+      record.isSaving = false;
+      updateSaveStatusDisplay(record, false, true);
     }
-  }, 1200);
+  }, 600);
 }
 
 function captureActiveEditorState(){
@@ -3208,10 +3302,15 @@ function captureActiveEditorState(){
     record.saved = false;
     markRecordDirty(record);
     renderTodayEntries();
+    const saveTime = Date.now();
     persistRecord(record, {
       transcription: record.transcription,
       patientData: record.patientData,
       updatedAt: serverTimestamp()
+    }).then(() => {
+      record.lastSavedAt = saveTime;
+      record.saved = true;
+      updateSaveStatusDisplay(record, false);
     }).catch(err => console.error('Auto persist on selection change failed:', err));
   }
 }
@@ -3250,12 +3349,17 @@ function ownerInitials(ownerUid){
 
 function noteFromSnapshot(snapshot, ownerUid = currentUser?.uid){
   const data = snapshot.data();
+  const rawSavedAt = data.updatedAt || data.userSavedAt || data.createdAt;
+  const parsedSavedAt = parseTimestampDate(rawSavedAt);
   return {
     ...data,
     firestoreId:snapshot.id,
     ownerUid,
     ownerLabel:ownerDisplayName(ownerUid),
     createdAtValue:data.createdAt,
+    updatedAtValue:data.updatedAt,
+    userSavedAtValue:data.userSavedAt,
+    lastSavedAt: parsedSavedAt ? parsedSavedAt.getTime() : null,
     name:data.patientData?.name || 'Visit Note draft',
     uhid:data.patientData?.uhid || 'NIL',
     age:data.patientData?.age || 'NIL',
@@ -3542,7 +3646,31 @@ function saveButtonLabel(){
 
 async function persistRecord(record, changes){
   if (!currentUser || !record?.firestoreId) return;
-  await setDoc(noteDocRef(record),changes,{merge:true});
+  const now = Date.now();
+  const key = recordLocalKey(record);
+  if (key) localDirtyRecords.delete(key);
+  if (record) {
+    record.lastSavedAt = now;
+    record.updatedAtValue = now;
+    record.saved = true;
+    record.isSaving = false;
+  }
+  const liveRecord = records.find(r => isSameRecord(r, record)) || record;
+  liveRecord.saved = true;
+  liveRecord.isSaving = false;
+  liveRecord.lastSavedAt = now;
+  liveRecord.updatedAtValue = now;
+  try {
+    await setDoc(noteDocRef(record),changes,{merge:true});
+    updateSaveStatusDisplay(liveRecord, false);
+  } catch (err) {
+    console.error('persistRecord error:', err);
+    markRecordDirty(record);
+    record.saved = false;
+    liveRecord.saved = false;
+    updateSaveStatusDisplay(liveRecord, false, true);
+    throw err;
+  }
 }
 
 function clearRecordSearch(){
@@ -3738,11 +3866,14 @@ function removeNilSectionsForCopy(text){
 }
 
 function selectEntry(i,{preserveDirtyEditor = false} = {}){
+  const activeRecordBefore = activeIndex !== null ? records[activeIndex] : null;
   activeIndex = i;
   const r = records[i];
   const isVoiceDraftRecord = r.voiceDraft === true;
   const isGeneratedRecord = !isVoiceDraftRecord && (Boolean(r.transcription) || r.kind === 'generated');
-  const keepExistingEditor = preserveDirtyEditor && localDirtyRecords.has(recordLocalKey(r)) && Boolean(document.getElementById('generatedNoteEditor'));
+  const existingEditor = document.getElementById('generatedNoteEditor');
+  const isSameActiveNote = activeRecordBefore && isSameRecord(activeRecordBefore, r);
+  const keepExistingEditor = Boolean(existingEditor) && (preserveDirtyEditor || isSameActiveNote || localDirtyRecords.has(recordLocalKey(r)));
   renderEntries();
 
   const identity = patientIdentity(r);
@@ -3765,7 +3896,8 @@ function selectEntry(i,{preserveDirtyEditor = false} = {}){
       closeContinuationDock();
     }
     if (keepExistingEditor){
-      resizeNoteEditor(document.getElementById('generatedNoteEditor'));
+      resizeNoteEditor(existingEditor);
+      updateSaveStatusDisplay(r, r.isSaving === true);
       return;
     }
     renderGeneratedNote(r);
@@ -4169,12 +4301,19 @@ function resizeNoteEditor(editor){
 function renderVoiceDraftTemplate(draft){
   const title = draft.selectedMode || 'Visit Note';
   const templateText = newVoiceTemplateForMode(draft.selectedMode, draft.visitType || selectedVisitType, draft.patientData, draft.visitDate);
+  const isSaving = draft.isSaving === true;
+  const statusText = formatLastSavedText(draft, isSaving);
+  const dotClass = isSaving ? 'saving' : 'saved';
   mainScroll.innerHTML = `
     <div class="generated-note">
       <section class="generated-note-card">
         <div class="generated-note-head">
           <div>
             <h1 class="generated-note-title">${escapeHtml(title)}</h1>
+            <div class="save-status-indicator" id="saveStatusIndicator">
+              <span class="status-dot ${dotClass}"></span>
+              <span id="saveStatusText">${escapeHtml(statusText)}</span>
+            </div>
           </div>
         </div>
         <div class="note-editor voice-template-preview" contenteditable="false" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Voice draft template preview">${richNoteHtml(templateText)}</div>
@@ -4183,6 +4322,7 @@ function renderVoiceDraftTemplate(draft){
   resizeNoteEditor(document.querySelector('.voice-template-preview'));
   recordBtn.classList.toggle('is-recording', draft.recording === true);
   recordSub.textContent = draft.recording ? 'Listening...' : 'Voice draft open';
+  if (saveDraftBtn) saveDraftBtn.title = statusText;
 }
 
 function renderVoiceWorkspace(){
@@ -4200,12 +4340,19 @@ function renderGeneratedNote(draft){
   const title = draft.selectedMode || 'Visit Note';
   const displayText = anonymizeTextForRecord(formatStoredReviewNotes(draft.transcription), draft);
   const canEdit = !anonymizeEnabled;
+  const isSaving = draft.isSaving === true;
+  const statusText = formatLastSavedText(draft, isSaving);
+  const dotClass = isSaving ? 'saving' : 'saved';
   mainScroll.innerHTML = `
     <div class="generated-note">
       <section class="generated-note-card">
         <div class="generated-note-head">
           <div>
             <h1 class="generated-note-title">${escapeHtml(title)}</h1>
+            <div class="save-status-indicator" id="saveStatusIndicator">
+              <span class="status-dot ${dotClass}"></span>
+              <span id="saveStatusText">${escapeHtml(statusText)}</span>
+            </div>
           </div>
         </div>
         <div class="note-editor ${anonymizeEnabled ? 'anonymized' : ''}" id="generatedNoteEditor" contenteditable="${canEdit ? 'true' : 'false'}" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable generated note">${richNoteHtml(displayText)}</div>
@@ -4215,6 +4362,7 @@ function renderGeneratedNote(draft){
   const editor = document.getElementById('generatedNoteEditor');
   const mobileInlineReviewBtn = document.getElementById('mobileInlineReviewBtn');
   resizeNoteEditor(editor);
+  if (saveDraftBtn) saveDraftBtn.title = statusText;
   if (mobileInlineReviewBtn) mobileInlineReviewBtn.addEventListener('click', openContinuationDock);
   if (canEdit){
     ['focus','keyup','mouseup','touchend'].forEach(eventName => {
@@ -4225,8 +4373,10 @@ function renderGeneratedNote(draft){
       draft.patientData = extractPatientFromNote(draft.transcription, draft.patientData);
       if (draft.patientData?.name && draft.patientData.name !== 'NIL') draft.name = draft.patientData.name;
       draft.saved = false;
+      draft.isSaving = true;
       markRecordDirty(draft);
       renderTodayEntries();
+      updateSaveStatusDisplay(draft, true);
       scheduleAutosave(draft);
       clearTimeout(saveFeedbackTimer);
       saveFeedbackUntil = 0;
@@ -4234,6 +4384,11 @@ function renderGeneratedNote(draft){
       updatePrescriptionPrintButton();
       resizeNoteEditor(editor);
       captureEditorSelection();
+    });
+    editor.addEventListener('blur', () => {
+      if (draft.isSaving || localDirtyRecords.has(recordLocalKey(draft))) {
+        scheduleAutosave(draft);
+      }
     });
     editor.addEventListener('paste', event => {
       event.preventDefault();
