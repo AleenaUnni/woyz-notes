@@ -1854,6 +1854,20 @@
     flex-shrink:0;
     z-index:999;
   }
+  .missing-key-notice-banner{
+    width:100%;
+    background:#fee2e2;
+    border-bottom:1px solid #f87171;
+    color:#991b1b;
+    padding:10px 16px;
+    font-size:13px;
+    font-weight:600;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-shrink:0;
+    z-index:998;
+  }
   body.is-deactivated-user .record-btn,
   body.is-deactivated-user .add-note-btn,
   body.is-deactivated-user .save-draft-btn,
@@ -1941,6 +1955,10 @@
     <div class="deactivated-notice-banner" id="deactivatedNoticeBanner" style="display:none;">
       <span>⚠️</span>
       <span><strong>Account Deactivated:</strong> Your account has been deactivated by the administrator. You can view your existing records, but creating new notes (voice or manual) is disabled.</span>
+    </div>
+    <div class="missing-key-notice-banner" id="missingKeyNoticeBanner" style="display:none;">
+      <span>⚠️</span>
+      <span><strong>Authorization Key Missing:</strong> Authorization key is missing. Contact admin to set Gemini authorization key.</span>
     </div>
     <div class="main-topbar" id="topbar">
       <div class="topbar-patient" id="topbarPatient" role="button" tabindex="0" aria-label="Open previous notes">
@@ -3885,6 +3903,7 @@ onAuthStateChanged(auth,user => {
     appShell.classList.remove('authenticated');
     loginScreen.classList.remove('hidden');
     userEmail.textContent = '';
+    if (typeof refreshAuthSetting === 'function') refreshAuthSetting();
   }
 });
 
@@ -6276,7 +6295,14 @@ async function permanentlyDeleteTrashRecord(record){
 }
 
 function refreshAuthSetting(){
-  authKeyBtn.style.display = getEffectiveGeminiApiKey() ? 'none' : 'flex';
+  const hasKey = !!getEffectiveGeminiApiKey();
+  if (authKeyBtn) {
+    authKeyBtn.style.display = hasKey ? 'none' : 'flex';
+  }
+  const missingKeyBanner = document.getElementById('missingKeyNoticeBanner');
+  if (missingKeyBanner) {
+    missingKeyBanner.style.display = (currentUser && !hasKey) ? 'flex' : 'none';
+  }
 }
 
 refreshAuthSetting();
