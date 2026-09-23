@@ -1875,7 +1875,11 @@
   body.is-deactivated-user .mobile-delete-btn,
   body.is-deactivated-user .mobile-doc-action,
   body.is-deactivated-user .template-item,
-  body.is-deactivated-user .topbar-review-btn {
+  body.is-deactivated-user .topbar-review-btn,
+  body.is-missing-key .record-btn,
+  body.is-missing-key .add-note-btn,
+  body.is-missing-key .mobile-record-btn,
+  body.is-missing-key .continuation-start-btn {
     opacity:0.65;
     cursor:not-allowed !important;
   }
@@ -1886,7 +1890,11 @@
   body.is-deactivated-user .mobile-delete-btn:hover,
   body.is-deactivated-user .mobile-doc-action:hover,
   body.is-deactivated-user .template-item:hover,
-  body.is-deactivated-user .topbar-review-btn:hover {
+  body.is-deactivated-user .topbar-review-btn:hover,
+  body.is-missing-key .record-btn:hover,
+  body.is-missing-key .add-note-btn:hover,
+  body.is-missing-key .mobile-record-btn:hover,
+  body.is-missing-key .continuation-start-btn:hover {
     cursor:not-allowed !important;
     opacity:0.5;
     filter:grayscale(0.5);
@@ -4578,6 +4586,10 @@ function extendRecordingTime(){
 async function handleSpaceAction(){
   if (activeIndex === null || !records[activeIndex].isDraft || records[activeIndex].transcribing) return;
   const draft = records[activeIndex];
+  if (!getEffectiveGeminiApiKey()) {
+    window.alert('Authorization key missing. Please contact your administrator to set up your Gemini authorization key before recording.');
+    return;
+  }
   if (draft.stopped){
     draft.hasStarted = false;
     draft.stopped = false;
@@ -4595,6 +4607,11 @@ async function handleSpaceAction(){
 
 async function startRecording(){
   const draft = records[activeIndex];
+  if (!getEffectiveGeminiApiKey()) {
+    window.alert('Authorization key missing. Please contact your administrator to set up your Gemini authorization key before recording.');
+    if (draft) draft.status = 'Authorization key missing. Contact admin.';
+    return;
+  }
   try{
     mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
     audioChunks = [];
@@ -4849,7 +4866,10 @@ function renderContinuationDock(){
     ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>'
     : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5Z"/></svg>';
   continuationPauseBtn.setAttribute('aria-label', continuationState.recording ? 'Pause continuation dictation' : 'Resume continuation dictation');
-  continuationStartBtn.disabled = continuationState.processing || isWaitingForDraft;
+  const hasKey = !!getEffectiveGeminiApiKey();
+  continuationStartBtn.disabled = continuationState.processing || isWaitingForDraft || !hasKey;
+  if (!hasKey) continuationStartBtn.title = 'Authorization key missing — Contact admin to set Gemini authorization key';
+  else if (!isUserDeactivated) continuationStartBtn.title = '';
   continuationPauseBtn.disabled = continuationState.processing || isWaitingForDraft;
   continuationExtendBtn.disabled = continuationState.processing || isWaitingForDraft;
   continuationStopBtn.disabled = continuationState.processing || isWaitingForDraft;
@@ -4998,6 +5018,10 @@ async function startContinuationRecording(){
   if (!continuationState.open || continuationState.processing) return;
   if (isUserDeactivated) {
     window.alert('Your account is currently deactivated by the administrator. Voice recording is disabled.');
+    return;
+  }
+  if (!getEffectiveGeminiApiKey()) {
+    window.alert('Authorization key missing. Please contact your administrator to set up your Gemini authorization key before recording.');
     return;
   }
   if (continuationState.mode === 'new' && !continuationState.targetId){
@@ -6009,6 +6033,10 @@ async function createVoiceDraft(mode = null){
     window.alert('Your account is currently deactivated by the administrator. Voice note recording and creation is disabled.');
     return;
   }
+  if (!getEffectiveGeminiApiKey()) {
+    window.alert('Authorization key missing. Please contact your administrator to set up your Gemini authorization key before recording.');
+    return;
+  }
   return withDraftCreationLock(async () => {
     const selectedMode = mode || null;
     const requestedVisitType = 'OP';
@@ -6303,6 +6331,15 @@ function refreshAuthSetting(){
   if (missingKeyBanner) {
     missingKeyBanner.style.display = (currentUser && !hasKey) ? 'flex' : 'none';
   }
+  document.body.classList.toggle('is-missing-key', Boolean(currentUser && !hasKey));
+  const disabledTitle = (currentUser && !hasKey) ? 'Authorization key missing — Contact admin to set Gemini authorization key' : '';
+  ['recordBtn', 'addNoteBtn', 'mobileRecordBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      if (currentUser && !hasKey) el.title = disabledTitle;
+      else if (!isUserDeactivated) el.title = '';
+    }
+  });
 }
 
 refreshAuthSetting();
